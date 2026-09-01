@@ -84,20 +84,25 @@ export function Header({
           ))}
         </nav>
 
-        {clock && (
-          <div className="flex items-baseline gap-2">
-            <span className="fig text-[13px] text-ink">{clock.et_time}</span>
-            <span className="eyebrow text-[9px]">ET</span>
-            <span className="hidden text-[10.5px] text-ink-3 sm:inline">{clock.phase.label}</span>
-            {clock.overlap && (
-              <span className="fig rounded bg-flip/15 px-1.5 py-px text-[9px] text-flip">
-                OVERLAP
-              </span>
-            )}
-          </div>
-        )}
-
+        {/* The clock rides the right-side status group (owner, 2026-09-01):
+            time, session, feed state and the refresh are all "is this thing
+            current" answers, and they read better as one cluster than with
+            the clock orphaned beside the tabs. */}
         <div className="ml-auto flex items-center gap-2">
+          {clock && (
+            <div className="mr-2 flex items-baseline gap-2">
+              {clock.overlap && (
+                <span className="fig rounded bg-flip/15 px-1.5 py-px text-[9px] text-flip">
+                  OVERLAP
+                </span>
+              )}
+              <span className="hidden text-[10.5px] text-ink-3 sm:inline">
+                {clock.phase.label}
+              </span>
+              <span className="fig text-[13px] text-ink">{clock.et_time}</span>
+              <span className="eyebrow text-[9px]">ET</span>
+            </div>
+          )}
           <span
             className={cn(
               "h-[7px] w-[7px] rounded-full",
