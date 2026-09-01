@@ -807,30 +807,38 @@ def extract_json(text: str) -> Any | None:
         return None
     for candidate in (text, *(m.group(1) for m in _FENCE.finditer(text))):
         candidate = candidate.strip()
-        start = candidate.find("{")
-        if start < 0:
-            continue
-        depth, in_str, esc = 0, False, False
-        for i in range(start, len(candidate)):
-            ch = candidate[i]
-            if in_str:
-                if esc:
-                    esc = False
-                elif ch == "\\":
-                    esc = True
-                elif ch == '"':
-                    in_str = False
-                continue
-            if ch == '"':
-                in_str = True
-            elif ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    with contextlib.suppress(ValueError, TypeError):
-                        return json.loads(candidate[start : i + 1])
-                    break
+        # EVERY BRACE GETS A TURN, leftmost first — a fourth wrapping arrived
+        # live on 2026-09-01: a stray opening brace before the real object
+        # ("{\n\n{ ...an entire valid, correctly-scoped report... }").
+        # Matched only from the first brace, the orphan never closes, depth
+        # never returns to zero, and a complete answer was thrown away with
+        # "no JSON object" — during upstream saturation, when answers are
+        # most expensive to re-ask for. Leftmost-first keeps the outermost
+        # parseable object winning; the cap is because a pathological answer
+        # is all braces.
+        starts = [i for i, ch in enumerate(candidate) if ch == "{"][:8]
+        for start in starts:
+            depth, in_str, esc = 0, False, False
+            for i in range(start, len(candidate)):
+                ch = candidate[i]
+                if in_str:
+                    if esc:
+                        esc = False
+                    elif ch == "\\":
+                        esc = True
+                    elif ch == '"':
+                        in_str = False
+                    continue
+                if ch == '"':
+                    in_str = True
+                elif ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        with contextlib.suppress(ValueError, TypeError):
+                            return json.loads(candidate[start : i + 1])
+                        break
     return None
 
 
