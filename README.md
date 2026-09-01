@@ -4,12 +4,11 @@
     &nbsp;HermesX
   </h1>
 
-  <p><strong>A single-desk market news terminal</strong> for trading <strong>NQ · ES · GC</strong>
-  across the Asia, London and New York sessions — a classified multi-source wire, the
-  live book with index movers and sector rotation, the vol curve, the Treasury curve
-  with a per-meeting FOMC path, dealer gamma levels, session-anchored volume profiles,
-  an economic calendar with a Fed &amp; Treasury diary, and an <strong>AI session
-  read</strong> built only from facts the engine computed — all on one session clock.</p>
+  <p><strong>Financial Markets &amp; Macro News Terminal</strong> for trading Nasdaq,
+  S&amp;P 500 and Gold futures across the Asia, London and New York sessions —
+  a live news wire, sector rotation, dealer options positioning and gamma levels,
+  the economic calendar, earnings, and a Fed &amp; Treasury diary — with
+  <strong>AI-powered session reads</strong> built from facts the engine computed.</p>
 
   <p>
     <img alt="Next.js 15" src="https://img.shields.io/badge/Next.js-15-black" />
