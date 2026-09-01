@@ -360,25 +360,58 @@ function Body({
           <span className="fig text-[19px] tracking-tight uppercase" style={{ color: hue }}>
             {r.bias}
           </span>
-          <Conviction n={r.conviction} hue={hue} />
+          <span
+            className="fig text-[10px] text-ink-4"
+            title="Conviction 1-5 — how strongly the data supports the call. The model's own confidence, not a probability."
+          >
+            {r.conviction}/5 conviction
+          </span>
         </div>
 
+        {/*
+         * THE CALL AS ONE GLYPH, in the grammar Index Movers already taught
+         * this screen: a bar diverging from a centre line. Side is direction,
+         * length is conviction, hue is the bias shade (the leaning variants
+         * keep their lighter hues). This replaced a conviction meter and a
+         * bias spectrum stacked as two lookalike five-unit rows — "we have
+         * bearish then 3/5, so what do the bars mean?" was the review.
+         */}
         <div
           className="mt-2 mb-2.5 flex items-center gap-1.5"
-          title={`The five-step bias spectrum — this note sits at "${r.bias}". The dots above are conviction: how strongly the data supports it.`}
+          title={`${r.bias}, conviction ${r.conviction} of 5 — the side is the call, the length is how strongly the data backs it.`}
         >
           <span className="fig text-[8.5px] uppercase" style={{ color: "var(--put)" }}>
             bear
           </span>
-          <div className="flex flex-1 items-center gap-1">
-            {BIAS_ORDER.map((b, i) => (
+          <div className="relative h-[7px] flex-1 rounded-full bg-ring/50">
+            <span
+              aria-hidden
+              className="absolute inset-y-[-2px] left-1/2 w-px -translate-x-1/2 bg-ink-3"
+            />
+            {idx === 2 ? (
+              // Neutral has no side to take: a centred block whose width is
+              // still the conviction, because "no edge" can be held weakly or
+              // firmly and the difference matters.
               <span
-                key={b}
-                className="h-[3px] flex-1 rounded-full"
-                style={{ background: i === idx ? hue : "var(--ring)" }}
-                title={b}
+                className="absolute top-0 h-full rounded-full"
+                style={{
+                  left: `${50 - (r.conviction / 5) * 12}%`,
+                  width: `${(r.conviction / 5) * 24}%`,
+                  background: hue,
+                  opacity: 0.9,
+                }}
               />
-            ))}
+            ) : (
+              <span
+                className="absolute top-0 h-full rounded-full"
+                style={{
+                  ...(idx < 2
+                    ? { right: "50%", width: `${(r.conviction / 5) * 50}%` }
+                    : { left: "50%", width: `${(r.conviction / 5) * 50}%` }),
+                  background: hue,
+                }}
+              />
+            )}
           </div>
           <span className="fig text-[8.5px] uppercase" style={{ color: "var(--call)" }}>
             bull
@@ -499,20 +532,3 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 /** Five pips. The model's own confidence, which is not a probability. */
-function Conviction({ n, hue }: { n: number; hue: string }) {
-  return (
-    <span
-      className="flex items-center gap-[3px]"
-      title={`Conviction ${n} of 5 — the model's own confidence, not a probability`}
-    >
-      {[1, 2, 3, 4, 5].map((i) => (
-        <span
-          key={i}
-          className="h-[7px] w-[7px] rounded-full"
-          style={{ background: i <= n ? hue : "var(--ring)" }}
-        />
-      ))}
-      <span className="fig ml-1 text-[10px] text-ink-4">{n}/5 conviction</span>
-    </span>
-  );
-}
