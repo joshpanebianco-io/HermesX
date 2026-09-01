@@ -32,14 +32,37 @@ function offline(reason: string): ReportFeed {
   };
 }
 
-async function call(method: "GET" | "POST", timeoutMs: number) {
-  const r = await fetch(`${API.replace(/\/$/, "")}/api/report`, {
+async function call(method: "GET" | "POST", timeoutMs: number, qs = "") {
+  const r = await fetch(`${API.replace(/\/$/, "")}/api/report${qs}`, {
     method,
     cache: "no-store",
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!r.ok) throw new Error(`collector returned HTTP ${r.status}`);
   return (await r.json()) as ReportFeed;
+}
+
+/*
+ * THE PICKER'S CHOICE USED TO DIE RIGHT HERE. The panel sent
+ * `?session=asia&asset=NQ`, this proxy forwarded a bare POST, and the
+ * collector fell back to its defaults — so every report generated through
+ * the UI was auto/all-books no matter what was selected ("even when i have
+ * an asset selected, it still seems to generate report for all 3"). The
+ * values are whitelisted rather than passed through raw because this is
+ * still a proxy, not a tunnel.
+ */
+const SESSIONS = new Set(["auto", "asia", "london", "ny"]);
+const ASSETS = new Set(["all", "NQ", "ES", "GC"]);
+
+function pickQuery(req: Request): string {
+  const u = new URL(req.url);
+  const qs = new URLSearchParams();
+  const session = u.searchParams.get("session") ?? "";
+  const asset = u.searchParams.get("asset") ?? "";
+  if (SESSIONS.has(session)) qs.set("session", session);
+  if (ASSETS.has(asset)) qs.set("asset", asset);
+  const out = qs.toString();
+  return out ? `?${out}` : "";
 }
 
 function reason(e: unknown): string {
@@ -57,9 +80,9 @@ export async function GET() {
   }
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
-    return NextResponse.json(await call("POST", 290_000));
+    return NextResponse.json(await call("POST", 290_000, pickQuery(req)));
   } catch (e) {
     return NextResponse.json(offline(reason(e)));
   }
