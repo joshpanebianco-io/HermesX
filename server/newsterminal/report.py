@@ -479,8 +479,10 @@ def build_digest(
         ],
         **book,
         "overnight_sessions": {
+            # ASX included because the desk is in Sydney: for an Asia-session
+            # note the home index is not "overnight", it is the tape.
             k: _brief(_q(quotes, k))
-            for k in ("N225", "HSI", "SHCOMP", "FTSE", "DAX", "SX5E")
+            for k in ("N225", "HSI", "SHCOMP", "ASX", "FTSE", "DAX", "SX5E")
         },
         "volatility": {k: _brief(_q(quotes, k)) for k in ("VIX", "VVIX", "MOVE", "VXN")},
         # THE SHAPE, NOT JUST THE LEVEL. Contango is the calm shape; the near

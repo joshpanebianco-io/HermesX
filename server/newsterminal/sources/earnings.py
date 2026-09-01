@@ -90,7 +90,10 @@ def parse_day(doc: Any, day: str) -> list[dict[str, Any]]:
             "when": _when(r.get("time")),
             "eps_forecast": clean_text(str(r.get("epsForecast") or "")) or None,
             "eps_actual": clean_text(str(r.get("eps") or "")) or None,
-            "surprise_pct": clean_text(str(r.get("surprise") or "")) or None,
+            # A NUMBER, NOT A STRING. Nasdaq sends "2.5" (or "N/A"); shipping the
+            # raw text meant the UI could not compare it to zero to colour a
+            # beat, and "N/A" survived as a truthy value.
+            "surprise_pct": _float(r.get("surprise")),
             "market_cap": cap,
             "bellwether": sym in BELLWETHERS,
         })
@@ -98,6 +101,14 @@ def parse_day(doc: Any, day: str) -> list[dict[str, Any]]:
     # how much of the index each one is.
     out.sort(key=lambda r: -(r.get("market_cap") or 0))
     return out
+
+
+def _float(v: object) -> float | None:
+    """Nasdaq's numerics arrive as text, with "N/A" for absent."""
+    try:
+        return float(str(v).replace(",", "").strip())
+    except (TypeError, ValueError):
+        return None
 
 
 def collect(days_ahead: int = 4, days_back: int = 2) -> tuple[list[dict[str, Any]], SourceStatus]:

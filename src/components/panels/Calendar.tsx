@@ -278,8 +278,14 @@ function etDay(r: CalendarRow): string {
 
 function Head({ children }: { children: React.ReactNode }) {
   return (
-    <div className="border-y border-ring/40 bg-surface-2/50 px-3 py-1 first:border-t-0">
+    <div className="flex items-baseline justify-between border-y border-ring/40 bg-surface-2/50 px-3 py-1 first:border-t-0">
       <span className="eyebrow text-[9px]">{children}</span>
+      {/* Names the three figure columns once, instead of three tooltips a
+          reader has to discover. Order matches the rows: what printed, what
+          was expected, what it was last time. */}
+      <span className="fig text-[8.5px] tracking-wide text-ink-4">
+        act · cons<span className="hidden md:inline"> · prev</span>
+      </span>
     </div>
   );
 }
@@ -321,11 +327,24 @@ function Row({ r }: { r: CalendarRow }) {
           "fig w-[46px] shrink-0 text-right text-[10.5px]",
           r.released ? (surprised ? "text-flip" : "text-ink") : "text-ink-4",
         )}
+        title={r.released ? "Actual" : "Not printed yet"}
       >
         {r.actual_raw ?? "—"}
       </span>
-      <span className="fig w-[42px] shrink-0 text-right text-[10px] text-ink-4">
+      <span
+        className="fig w-[42px] shrink-0 text-right text-[10px] text-ink-4"
+        title="Consensus forecast"
+      >
         {r.consensus_raw ?? "—"}
+      </span>
+      {/* The least decisive of the three, so it is the one that yields on a
+          narrow screen — a surprise is judged against consensus, and previous
+          only says whether the series is turning. */}
+      <span
+        className="fig hidden w-[42px] shrink-0 text-right text-[10px] text-ink-4 md:block"
+        title="Previous reading"
+      >
+        {r.previous_raw ?? "—"}
       </span>
     </li>
   );

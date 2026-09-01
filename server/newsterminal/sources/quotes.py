@@ -50,7 +50,9 @@ UNIVERSE: list[tuple[str, str, str, str, str]] = [
     ("HSI", "^HSI", "Hang Seng", "global", "px"),
     ("SHCOMP", "000001.SS", "Shanghai Comp", "global", "px"),
     ("KOSPI", "^KS11", "KOSPI", "global", "px"),
-    ("AXJO", "^AXJO", "ASX 200", "global", "px"),
+    # "ASX", not "AXJO": the owner trades from Australia, scanned the board
+    # for their own index and could not find it behind Yahoo's code.
+    ("ASX", "^AXJO", "ASX 200", "global", "px"),
     ("FTSE", "^FTSE", "FTSE 100", "global", "px"),
     ("DAX", "^GDAXI", "DAX", "global", "px"),
     ("CAC", "^FCHI", "CAC 40", "global", "px"),

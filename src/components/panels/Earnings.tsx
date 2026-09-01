@@ -103,9 +103,47 @@ export function Earnings({
                     {r.symbol}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-[10.5px] text-ink-4">{r.name}</span>
-                  <span className="fig w-[46px] shrink-0 text-right text-[10px] text-ink-3">
-                    {r.eps_actual ?? r.eps_forecast ?? "—"}
-                  </span>
+                  {/*
+                    * WHICH NUMBER THIS IS, ALWAYS. This was
+                    * `eps_actual ?? eps_forecast` in one undifferentiated cell,
+                    * so "$1.45" could be a result or a guess and nothing said
+                    * which. Now: before the report, the estimate wears an "e";
+                    * after it, the actual takes the cell — green or red by the
+                    * surprise — and the estimate it beat or missed sits beside
+                    * it. The surprise carries the tooltip.
+                    */}
+                  {r.eps_actual != null ? (
+                    <span
+                      className="fig shrink-0 text-right text-[10px]"
+                      title={
+                        r.surprise_pct != null
+                          ? `Reported ${r.eps_actual} vs ${r.eps_forecast ?? "?"} expected — ${
+                              r.surprise_pct > 0 ? "beat" : r.surprise_pct < 0 ? "miss" : "in line"
+                            } by ${Math.abs(r.surprise_pct)}%`
+                          : `Reported ${r.eps_actual}`
+                      }
+                    >
+                      <span
+                        className={cn(
+                          (r.surprise_pct ?? 0) > 0 && "up",
+                          (r.surprise_pct ?? 0) < 0 && "down",
+                          r.surprise_pct == null && "text-ink",
+                        )}
+                      >
+                        {r.eps_actual}
+                      </span>
+                      {r.eps_forecast != null && (
+                        <span className="text-ink-4"> vs {r.eps_forecast}</span>
+                      )}
+                    </span>
+                  ) : (
+                    <span
+                      className="fig w-[46px] shrink-0 text-right text-[10px] text-ink-3"
+                      title="Consensus EPS estimate — not reported yet"
+                    >
+                      {r.eps_forecast != null ? `${r.eps_forecast}e` : "—"}
+                    </span>
+                  )}
                   <span
                     className="fig hidden w-[44px] shrink-0 text-right text-[9.5px] text-ink-4 sm:block"
                     title="Market capitalisation"

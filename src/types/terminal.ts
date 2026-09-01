@@ -230,7 +230,8 @@ export interface EarningsRow {
   when: "pre" | "after" | "unspecified";
   eps_forecast: string | null;
   eps_actual: string | null;
-  surprise_pct: string | null;
+  /** Percent, positive for a beat — parsed to a number at the source. */
+  surprise_pct: number | null;
   market_cap: number | null;
   bellwether: boolean;
 }
