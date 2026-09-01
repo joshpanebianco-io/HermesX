@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/media/hermesx-mark.svg" alt="HermesX" width="170" />
+  <img src="docs/media/hermesx-mark.png" alt="HermesX" width="190" />
 
   <h1>HermesX</h1>
 
@@ -272,7 +272,7 @@ extractor's four observed wrappings.
 
 ## The mark
 
-The winged helm is my own line art, traced to a single vector path
-(`src/lib/hermesMark.ts`) and recoloured live to the terminal's chrome hues — the
+The winged helm is my own line art. In the app it lives as a single traced vector
+path (`src/lib/hermesMark.ts`), recoloured live to the terminal's chrome hues — the
 favicon and the header render from the same path, so the tab and the page are one
 identity.
