@@ -52,7 +52,7 @@ export function generateMetadata(): Metadata {
 }
 
 const baseMetadata: Metadata = {
-  title: "HERMESX — macro, wire and gamma",
+  title: "HERMESX — News Terminal",
   description:
     "A single-desk market terminal: the wire, the board, the curve, sector rotation, " +
     "the economic calendar and borrowed gamma levels, on one session clock.",
