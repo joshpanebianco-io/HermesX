@@ -21,6 +21,11 @@ function icon(): string {
     // only way to make it BIGGER is to stop paying margins inside the tile
     // (was 80% with a border of dead space). Stroke up a step for the same
     // reason — presence at sixteen pixels.
+    // tx 586 is OPTICAL centring, not geometric: at 570 the measured gaps
+    // were already 1/2 — balanced — and the owner still read it as sitting
+    // left, because the helm's solid mass is left and the wing is sparse
+    // line work. 9px of deliberate right bias (per 256) is what makes the
+    // MASS look centred.
     // Scale 1.18 is PAST full bleed and crops on purpose (owner asked for
     // bigger twice after the edges were already touching): the top feather
     // flattens a hair against the tile and reads as a deliberate crop, not
@@ -30,7 +35,7 @@ function icon(): string {
     // inside its 512 box, so growing past scale 1.0 is what actually cancels
     // it — 1.06 fills the tile edge to edge without the rotated wing tips
     // clipping. Tilt matches the header: rotate leftmost = screen space.
-    `<path fill="#000" stroke="#000" stroke-width="20" transform="rotate(-10 256 256) translate(570 -46) scale(-1.18 1.18)" d="${HERMES_MARK_D}"/></svg>`
+    `<path fill="#000" stroke="#000" stroke-width="20" transform="rotate(-10 256 256) translate(586 -46) scale(-1.18 1.18)" d="${HERMES_MARK_D}"/></svg>`
   );
 }
 
