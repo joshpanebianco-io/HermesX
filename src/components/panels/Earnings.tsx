@@ -66,11 +66,24 @@ export function Earnings({
           Nothing big enough to move an index in the next few sessions.
         </p>
       ) : (
-        byDay.map(([date, list]) => (
+        byDay.map(([date, list], gi) => (
           <div key={date}>
-            <div className="flex items-center gap-2 border-y border-ring/40 bg-surface-2/50 px-3 py-1 first:border-t-0">
+            <div className="flex items-baseline gap-2 border-y border-ring/40 bg-surface-2/50 px-3 py-1 first:border-t-0">
               <span className="eyebrow text-[9px]">{label(date, today)}</span>
               <span className="fig text-[9px] text-ink-4">{list.length}</span>
+              {/* The figure columns, named where the calendar names its own —
+                 the reader has one place to look on both panels. First group
+                 only; four repeats of a legend is noise, not labelling. */}
+              {gi === 0 && (
+                <span className="fig ml-auto text-[8.5px] tracking-wide text-ink-4">
+                  <span title="Earnings per share. A trailing 'e' is the consensus estimate; once reported, the actual prints against the estimate — green beat, red miss.">
+                    eps
+                  </span>
+                  <span className="hidden sm:inline" title="Market capitalisation — how much index weight the print can move.">
+                    {" "}· cap
+                  </span>
+                </span>
+              )}
             </div>
             <ul>
               {list.map((r) => (
