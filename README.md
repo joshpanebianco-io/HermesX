@@ -1,10 +1,15 @@
 <div align="center">
-  <img src="docs/media/hermesx-mark.png" alt="HermesX" width="190" />
+  <h1>
+    <img src="docs/media/hermesx-mark.png" alt="" height="76" align="center" />
+    &nbsp;HermesX
+  </h1>
 
-  <h1>HermesX</h1>
-
-  <p><strong>A single-desk market news terminal</strong> — the wire, the book, the curve,
-  dealer gamma, volume profile and an AI session read, on one session clock.</p>
+  <p><strong>A single-desk market news terminal</strong> for trading <strong>NQ · ES · GC</strong>
+  across the Asia, London and New York sessions — a classified multi-source wire, the
+  live book with index movers and sector rotation, the vol curve, the Treasury curve
+  with a per-meeting FOMC path, dealer gamma levels, session-anchored volume profiles,
+  an economic calendar with a Fed &amp; Treasury diary, and an <strong>AI session
+  read</strong> built only from facts the engine computed — all on one session clock.</p>
 
   <p>
     <img alt="Next.js 15" src="https://img.shields.io/badge/Next.js-15-black" />
@@ -154,13 +159,27 @@ The left column's core: three panels, one price ladder each, `NQ / ES / GC` pick
   tagged, estimates marked with an `e`, and actuals shown against the estimate and
   coloured by the surprise once they print.
 
-### AI session reports
+### The AI session read
+![Session report](docs/media/report.png)
 
 The Report tab generates a **session note** on demand: pick the session (Asia /
 London / New York / auto-by-clock) and the book (NQ / ES / GC / all three), and the
 collector assembles a structured digest of everything above — then an LLM (via
-OpenRouter, with a model-and-mode fallback chain) writes a bias call: direction,
-conviction 1–5, drivers with evidence citations, risks, and the levels that matter.
+OpenRouter, with a model-and-mode fallback chain) writes the note. Its anatomy:
+
+- **The call** — bias on the bear/bull scale with a 1–5 conviction, where a hedged
+  read honestly held is worth more than a confident guess.
+- **Why** — each driver quotes the exact digest fields it rests on
+  (`gamma_levels.NQ.levels[2].price: 29406.0`), so every claim is auditable.
+- **How the session should behave** — the regime read: what positive gamma at these
+  walls, this rotation and this rates pricing usually does to the tape.
+- **Levels to watch** — the handful of prices the note actually turns on, drawn from
+  the gamma walls, the profile and the session ranges.
+- **What would change it** — the invalidation: the prices and prints that flip the
+  bias, stated before the session rather than rationalised after it.
+- **Risks** — scheduled and unscheduled ways the read dies.
+- **Past calls** — every prior note kept with its full digest attached, so any call
+  can be audited against exactly the data it saw.
 
 The design principle throughout: **the engine computes, the model narrates.**
 
