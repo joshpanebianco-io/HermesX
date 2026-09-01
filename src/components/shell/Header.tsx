@@ -153,12 +153,36 @@ function Mark() {
        * enough to survive; at 128px it is invisible.
        */}
       <defs>
-        {/* Mirrored with the art (x runs 1 to 0), so the wing keeps the
-            first hue and the helm face the second — the same placement the
-            owner approved before choosing the flip. */}
-        <linearGradient id="hermes-grad" x1="1" y1="0" x2="0" y2="1">
+        {/*
+          * THE MARK WASHES LIKE THE WORD ("it doesnt feel lively" — owner,
+          * 2026-09-01: the static gradient read as dead beside a wordmark in
+          * constant motion). Same trick as `.wordmark-wash`, in SVG terms: a
+          * PERIODIC palindromic gradient (a → sheen → b → sheen → a) in user
+          * space, twice the viewBox wide, slid one full period per cycle by
+          * SMIL — so the loop is seamless and the browser owns the clock, no
+          * JS. Same 5.6s as the word: one lockup, one period.
+          */}
+        <linearGradient
+          id="hermes-grad"
+          gradientUnits="userSpaceOnUse"
+          x1="0"
+          y1="0"
+          x2="1024"
+          y2="0"
+        >
           <stop offset="0" stopColor="var(--icon-a)" />
-          <stop offset="1" stopColor="var(--icon-b)" />
+          <stop offset="0.25" stopColor="var(--title-sheen)" />
+          <stop offset="0.5" stopColor="var(--icon-b)" />
+          <stop offset="0.75" stopColor="var(--title-sheen)" />
+          <stop offset="1" stopColor="var(--icon-a)" />
+          <animateTransform
+            attributeName="gradientTransform"
+            type="translate"
+            from="-1024 0"
+            to="0 0"
+            dur="5.6s"
+            repeatCount="indefinite"
+          />
         </linearGradient>
       </defs>
       {/* FLIPPED BY OWNER'S CALL (2026-09-01), seen both ways in the app:

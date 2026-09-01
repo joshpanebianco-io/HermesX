@@ -17,7 +17,11 @@ function icon(): string {
   // against a dark browser theme, the one-line fix is a light fill here.
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">` +
-    `<path fill="#000" stroke="#000" stroke-width="14" transform="translate(461 51) scale(-0.8 0.8)" d="${HERMES_MARK_D}"/></svg>`
+    // Full-bleed: a browser renders the tab icon at 16px regardless, so the
+    // only way to make it BIGGER is to stop paying margins inside the tile
+    // (was 80% with a border of dead space). Stroke up a step for the same
+    // reason — presence at sixteen pixels.
+    `<path fill="#000" stroke="#000" stroke-width="17" transform="translate(507 5) scale(-0.98 0.98)" d="${HERMES_MARK_D}"/></svg>`
   );
 }
 
