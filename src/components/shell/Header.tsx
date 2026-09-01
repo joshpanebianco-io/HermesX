@@ -175,11 +175,20 @@ function Mark() {
           <stop offset="0.5" stopColor="var(--icon-b)" />
           <stop offset="0.75" stopColor="var(--title-sheen)" />
           <stop offset="1" stopColor="var(--icon-a)" />
+          {/*
+            * FROM 0 TO -1024, WHICH RUNS THE COLOUR LEFT TO RIGHT ON SCREEN —
+            * the same direction as the wordmark wash. It reads backwards
+            * because it is: a userSpaceOnUse gradient resolves in the
+            * REFERENCING element's space, and the mirror wrapper flips that
+            * space's x-axis, so screen-right is negative x in here. The
+            * unmirrored-looking version shipped first and washed against the
+            * word ("the effect on the logo is going the wrong way").
+            */}
           <animateTransform
             attributeName="gradientTransform"
             type="translate"
-            from="-1024 0"
-            to="0 0"
+            from="0 0"
+            to="-1024 0"
             dur="5.6s"
             repeatCount="indefinite"
           />
@@ -196,7 +205,11 @@ function Mark() {
         * On a parent group the CSS on the path composes with the mirror
         * instead of replacing it.
         */}
-      <g transform="translate(512 0) scale(-1 1)">
+      {/* rotate SITS LEFTMOST so it applies in screen space, after the
+          mirror — inside the mirror its direction would flip, the same trap
+          the wash fell into. -6 degrees dips the face; "very slightly"
+          (owner, 2026-09-01), a dive, not a stumble. */}
+      <g transform="rotate(-6 256 256) translate(512 0) scale(-1 1)">
         <path
           className="hermes-mark"
           fill="url(#hermes-grad)"
