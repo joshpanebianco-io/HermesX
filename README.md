@@ -1,7 +1,12 @@
-# NewsTerminal
+# HERMESX
 
-A single-desk market terminal: the wire, the board, the curve, sector rotation,
-the economic calendar and borrowed gamma levels, on one session clock.
+Named for Hermes — god of messages, information and speed, which is the whole
+job description. A single-desk market terminal: the wire, the board, the curve,
+sector rotation, the economic calendar and borrowed gamma levels, on one
+session clock.
+
+(The folder and the Python package are still `NewsTerminal`/`newsterminal` —
+the brand renamed on 2026-09-01, the plumbing deliberately did not.)
 
 Next.js 15 front end on **:3100**, a Python collector on **:8100**. Sister
 project to GEXYGEN, which owns :3000/:8000 — the two are meant to run at the

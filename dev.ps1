@@ -1,4 +1,4 @@
-# Start NewsTerminal — both halves, each in its own window.
+# Start HERMESX — both halves, each in its own window.
 #
 #   .\dev.ps1               both, skipping whatever is already up
 #   .\dev.ps1 -Force        start anyway (will fail on a port clash)

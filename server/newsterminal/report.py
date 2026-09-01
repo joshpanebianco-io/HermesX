@@ -899,7 +899,7 @@ def _post(
             # they are not secret and not required, but sending them is the
             # polite side of a free tier.
             "HTTP-Referer": "http://localhost:3100",
-            "X-Title": "NewsTerminal",
+            "X-Title": "HERMESX",
         },
     )
     with urllib.request.urlopen(req, timeout=timeout) as r:

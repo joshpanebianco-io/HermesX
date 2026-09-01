@@ -4,7 +4,7 @@ import { THEME_COOKIE, hue, parseTheme, themeStyle } from "@/lib/theme";
 import "./globals.css";
 
 /**
- * The favicon is the same two-ring lockup as the on-page mark, in the chrome
+ * The favicon is the same winged-orb lockup as the on-page mark, in the chrome
  * hues — inlined as an SVG data URI so there is no file to keep in step with
  * the palette and no request for 300 bytes.
  */
@@ -12,8 +12,10 @@ function icon(a: string, b: string): string {
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">` +
     `<rect width="32" height="32" rx="7" fill="#0a0b10"/>` +
-    `<circle cx="12.5" cy="19.5" r="7" fill="none" stroke="${a}" stroke-width="2.8"/>` +
-    `<circle cx="22.5" cy="10.5" r="4.8" fill="none" stroke="${b}" stroke-width="2.8"/></svg>`
+    `<path d="M17.5 9.5 C 12 7.5, 7 8.5, 3 11.5" fill="none" stroke="${a}" stroke-width="2.6" stroke-linecap="round"/>` +
+    `<path d="M17 14 C 12.5 13.5, 9 14.5, 6 17" fill="none" stroke="${a}" stroke-width="2.6" stroke-linecap="round"/>` +
+    `<path d="M18 18.5 C 14.5 19, 12 20.5, 10.5 22.5" fill="none" stroke="${a}" stroke-width="2.6" stroke-linecap="round"/>` +
+    `<circle cx="22" cy="11" r="5" fill="none" stroke="${b}" stroke-width="2.8"/></svg>`
   );
 }
 
@@ -33,7 +35,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 const baseMetadata: Metadata = {
-  title: "NewsTerminal — macro, wire and gamma",
+  title: "HERMESX — macro, wire and gamma",
   description:
     "A single-desk market terminal: the wire, the board, the curve, sector rotation, " +
     "the economic calendar and borrowed gamma levels, on one session clock.",

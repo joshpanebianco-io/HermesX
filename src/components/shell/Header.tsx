@@ -48,7 +48,7 @@ export function Header({
         <div className="flex items-center gap-2">
           <Mark />
           <span className="wordmark fig text-[14px] font-semibold tracking-[0.14em]">
-            NEWSTERMINAL
+            HERMESX
           </span>
         </div>
 
@@ -139,25 +139,47 @@ function Mark() {
       viewBox="0 0 32 32"
       aria-hidden
       className="shrink-0"
-      // The rings glow and swell past the viewBox on the inhale; without this
-      // the SVG clips its own drop-shadow at the edge and the breath reads as
+      // The mark glows and moves past the viewBox on the beat; without this
+      // the SVG clips its own drop-shadow at the edge and the motion reads as
       // a flicker rather than as light.
       style={{ overflow: "visible" }}
     >
+      {/*
+       * THE WINGED ORB — Hermes reduced to what survives at eighteen pixels.
+       * The god of messages carries one (the orb, up and to the right, in the
+       * chrome pair's second hue) at speed (the wing: three feather strokes
+       * trailing down-left, in the first). A caduceus or a winged sandal is
+       * the richer symbol and both are mud at this size; two shapes and five
+       * strokes is what actually reads across a desk.
+       */}
+      <g className="hermes-wing">
+        <path
+          d="M17.5 9.5 C 12 7.5, 7 8.5, 3 11.5"
+          fill="none"
+          stroke="var(--icon-a)"
+          strokeWidth="2.6"
+          strokeLinecap="round"
+        />
+        <path
+          d="M17 14 C 12.5 13.5, 9 14.5, 6 17"
+          fill="none"
+          stroke="var(--icon-a)"
+          strokeWidth="2.6"
+          strokeLinecap="round"
+        />
+        <path
+          d="M18 18.5 C 14.5 19, 12 20.5, 10.5 22.5"
+          fill="none"
+          stroke="var(--icon-a)"
+          strokeWidth="2.6"
+          strokeLinecap="round"
+        />
+      </g>
       <circle
-        className="o2-a"
-        cx="12.5"
-        cy="19.5"
-        r="7"
-        fill="none"
-        stroke="var(--icon-a)"
-        strokeWidth="2.8"
-      />
-      <circle
-        className="o2-b"
-        cx="22.5"
-        cy="10.5"
-        r="4.8"
+        className="hermes-orb"
+        cx="22"
+        cy="11"
+        r="5"
         fill="none"
         stroke="var(--icon-b)"
         strokeWidth="2.8"

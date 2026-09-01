@@ -49,7 +49,7 @@ const CHROME_SLOTS: { key: keyof ThemeChoice; label: string; hint: string }[] = 
   { key: "tabs", label: "Tab underline", hint: "The active tab marker" },
   { key: "iconA", label: "Mark ring A", hint: "The larger ring of the logo" },
   { key: "iconB", label: "Mark ring B", hint: "The smaller ring" },
-  { key: "titleA", label: "Wordmark A", hint: "Left end of the NEWSTERMINAL gradient" },
+  { key: "titleA", label: "Wordmark A", hint: "Left end of the HERMESX gradient" },
   { key: "titleB", label: "Wordmark B", hint: "Right end of it" },
   // These described a hairline across the top edge, which no longer exists —
   // it was deleted when the frame effects arrived, because a static light and
@@ -349,7 +349,7 @@ function Preview() {
       </div>
       <div className="border-t border-ring/40 px-3 py-2">
         <span className="wordmark fig text-[14px] font-semibold tracking-[0.14em]">
-          NEWSTERMINAL
+          HERMESX
         </span>
       </div>
     </div>

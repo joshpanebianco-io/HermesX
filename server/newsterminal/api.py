@@ -38,7 +38,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         COLLECTOR.stop()
 
 
-app = FastAPI(title="NewsTerminal", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="HERMESX", version="0.1.0", lifespan=lifespan)
 
 # The Next server component calls this from the same machine; the browser never
 # does. Localhost only, and only the dev ports — this service holds nothing
