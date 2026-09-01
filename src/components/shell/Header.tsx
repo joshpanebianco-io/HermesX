@@ -207,9 +207,9 @@ function Mark() {
         */}
       {/* rotate SITS LEFTMOST so it applies in screen space, after the
           mirror — inside the mirror its direction would flip, the same trap
-          the wash fell into. -6 degrees dips the face; "very slightly"
-          (owner, 2026-09-01), a dive, not a stumble. */}
-      <g transform="rotate(-6 256 256) translate(512 0) scale(-1 1)">
+          the wash fell into. -10 degrees dips the face — asked at -6
+          first, then "slightly more" (owner, 2026-09-01). */}
+      <g transform="rotate(-10 256 256) translate(512 0) scale(-1 1)">
         <path
           className="hermes-mark"
           fill="url(#hermes-grad)"
