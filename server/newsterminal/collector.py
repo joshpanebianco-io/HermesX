@@ -39,6 +39,7 @@ from .sources import constituents as cons_src
 from .sources import earnings as earn_src
 from .sources import fedcal as fed_src
 from .sources import gex as gex_src
+from .sources import profiles as prof_src
 from .sources import quotes as quotes_src
 from .sources import ranges as ranges_src
 from .sources import rates as rates_src
@@ -70,6 +71,7 @@ class Collector:
             "fed": [],
             "fomc": [],
             "auctions": [],
+            "profiles": {"assets": {}},
             "gex": {"assets": {}, "enabled": bool(config.GEXYGEN_API)},
         }
         self._status: dict[str, SourceStatus] = {}
@@ -100,6 +102,8 @@ class Collector:
             # Six-hour cadence: the auction schedule is set weeks ahead and
             # amends almost never.
             "auctions": (self._do_auctions, 6 * 3600.0, now + 5.0),
+            # Five minutes: the levels move slowly and the fetch is 3 x 55KB.
+            "profiles": (self._do_profiles, 300.0, now + 8.0),
         }
 
     # ---------------------------------------------------------------- jobs
@@ -172,6 +176,12 @@ class Collector:
     def _do_auctions(self) -> None:
         rows, st = auc_src.collect()
         self._commit("auctions", rows if st.ok else None, st)
+
+    def _do_profiles(self) -> None:
+        data, st = prof_src.collect()
+        # Committed even when degraded, like gex: the panel needs the per-asset
+        # error text, and a preserved older profile would be a stale level.
+        self._commit("profiles", data, st)
 
     def _do_gex(self) -> None:
         data, st = gex_src.collect()

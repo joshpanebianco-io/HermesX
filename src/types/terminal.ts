@@ -315,6 +315,32 @@ export interface PolicyMeetings {
   anchor_src: string | null;
 }
 
+export interface VPRow {
+  key: string;
+  label: string;
+  kind: "done" | "live";
+  date: string;
+  start_et: string;
+  end_et: string;
+  low: number;
+  high: number;
+  /** Point of control — the price with the most traded volume. */
+  poc: number;
+  /** Value area high/low — the 70% acceptance zone's edges. */
+  vah: number;
+  val: number;
+  volume: number;
+  bin: number;
+  bars: number;
+}
+
+export interface VPAssets {
+  assets: Record<
+    string,
+    { ok: boolean; error?: string | null; rows: VPRow[]; last?: number | null }
+  >;
+}
+
 export interface AuctionEvent {
   /** "10Y", "30Y" — a reopening already renamed to what the market calls it. */
   term: string;
@@ -366,6 +392,7 @@ export interface Terminal {
   constituents: { indices: Record<string, IndexMovers> };
   fed: FedEvent[];
   auctions: AuctionEvent[];
+  profiles: VPAssets;
   volterm: VolTerm;
   policy_meetings: PolicyMeetings;
   earnings: EarningsRow[];

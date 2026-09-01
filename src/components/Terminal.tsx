@@ -17,6 +17,7 @@ import { SessionRanges } from "@/components/panels/SessionRanges";
 import { Earnings } from "@/components/panels/Earnings";
 import { Movers } from "@/components/panels/Movers";
 import { Volatility } from "@/components/panels/Volatility";
+import { VolumeProfile } from "@/components/panels/VolumeProfile";
 import { Fed } from "@/components/panels/Fed";
 import { AlertStrip } from "@/components/shell/AlertStrip";
 import { DEFAULT_THEME, type ThemeChoice } from "@/lib/theme";
@@ -246,6 +247,11 @@ export function Terminal({
               expiry={data.expiry}
               ageMin={ages.ranges}
               error={st.ranges?.ok === false ? st.ranges.error : null}
+            />
+            <VolumeProfile
+              data={data.profiles}
+              ageMin={ages.profiles}
+              error={st.profiles?.ok === false ? st.profiles.error : null}
             />
             <Gamma
               assets={data.gex?.assets ?? {}}

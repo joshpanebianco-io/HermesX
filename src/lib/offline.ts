@@ -36,6 +36,7 @@ export function offlineTerminal(reason: string, api: string): Terminal {
     constituents: { indices: {} },
     fed: [],
     auctions: [],
+    profiles: { assets: {} },
     policy_meetings: { meetings: [], anchor: null, anchor_src: null },
     volterm: {
       points: [],
