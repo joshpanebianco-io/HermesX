@@ -134,8 +134,8 @@ export function Header({
 function Mark() {
   return (
     <svg
-      width="18"
-      height="18"
+      width="20"
+      height="20"
       viewBox="0 0 32 32"
       aria-hidden
       className="shrink-0"
@@ -145,63 +145,34 @@ function Mark() {
       style={{ overflow: "visible" }}
     >
       {/*
-       * THE PETASOS — the winged helmet, front on, which is what "hermes icon"
-       * actually means in every icon set (owner pointed at the search results
-       * and asked for it). Chosen over the caduceus and the winged sandal by
-       * rendering all of them at 18 pixels and looking: the caduceus mushes
-       * into a vertical smudge, the sandal reads as a boot-shaped tick, and
-       * the SYMMETRIC helmet survives — symmetry is what miniaturises.
-       * Dome and brim in the chrome pair's second hue, two feathers a side in
-       * the first.
+       * THE GOD HIMSELF, IN PROFILE — the owner pointed at the stock-vector
+       * genre (classical head, winged helm, emblem cut) and asked for that
+       * over the bare hat. Hand-cut and auditioned at chip size like its
+       * predecessors: the full striding figure dies into a pedestrian-crossing
+       * sprite at 18px, but a PROFILE head survives, because the forehead
+       * flowing straight into the nose is what makes two centimetres of
+       * silhouette read as Greek. Face in the chrome pair's second hue; helm
+       * and wing in the first.
+       *
+       * DRAW ORDER IS LOAD-BEARING: face, then wing, then helmet, so the
+       * wing's root tucks UNDER the dome and the feathers emerge from the
+       * helmet's edge — drawn on top, they grew through it.
        */}
-      <g className="hermes-wing-l">
-        <path
-          d="M8.5 18 C 5.5 14.5, 3.5 12.5, 1.5 12"
-          fill="none"
-          stroke="var(--icon-a)"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-        />
-        <path
-          d="M9.5 20 C 7 17.5, 5 16.5, 3 16.5"
-          fill="none"
-          stroke="var(--icon-a)"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-        />
-      </g>
-      <g className="hermes-wing-r">
-        <path
-          d="M23.5 18 C 26.5 14.5, 28.5 12.5, 30.5 12"
-          fill="none"
-          stroke="var(--icon-a)"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-        />
-        <path
-          d="M22.5 20 C 25 17.5, 27 16.5, 29 16.5"
-          fill="none"
-          stroke="var(--icon-a)"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-        />
-      </g>
-      <g className="hermes-helm">
-        <path
-          d="M8 21 A 8 8 0 0 1 24 21"
-          fill="none"
-          stroke="var(--icon-b)"
-          strokeWidth="2.8"
-          strokeLinecap="round"
-        />
-        <path
-          d="M5.5 21 L 26.5 21"
-          fill="none"
-          stroke="var(--icon-b)"
-          strokeWidth="2.6"
-          strokeLinecap="round"
-        />
-      </g>
+      <path
+        className="hermes-head"
+        d="M19.6 13.0 L 23.6 17.8 L 22.3 18.6 L 23.2 19.7 L 22.3 20.4 L 23.0 21.4 Q 23.0 22.6 22.2 23.4 Q 20.6 25.2 17.2 25.8 L 16.9 28.8 L 11.6 28.8 Q 12.2 26.0 12.0 23.6 Q 10.4 20.6 10.6 17.2 L 11.2 14.2 Z"
+        fill="var(--icon-b)"
+      />
+      <path
+        className="hermes-wing"
+        d="M15.5 11.5 C 11.0 10.2, 6.8 8.6, 2.2 5.6 C 4.8 8.6, 6.4 9.9, 8.8 11.1 C 6.0 10.7, 3.2 10.3, 0.9 9.9 C 3.4 11.9, 5.8 12.9, 8.8 13.4 C 6.8 13.6, 4.8 13.9, 2.8 14.4 C 6.2 15.9, 11.2 15.7, 14.6 14.4 Z"
+        fill="var(--icon-a)"
+      />
+      <path
+        className="hermes-helm"
+        d="M23.2 12.1 Q 24.2 12.4 23.4 11.4 Q 20.6 5.4 13.6 5.9 Q 8.3 6.4 9.3 13.9 Q 9.5 14.8 10.4 14.4 Q 16.0 11.4 21.6 12.2 Z"
+        fill="var(--icon-a)"
+      />
     </svg>
   );
 }

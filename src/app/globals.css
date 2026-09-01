@@ -715,9 +715,9 @@
     .tick,
     .wire-in,
     .live-dot,
-    .hermes-wing-l,
-    .hermes-wing-r,
-    .hermes-helm {
+    .hermes-wing,
+    .hermes-helm,
+    .hermes-head {
       animation: none;
     }
     /* The wash is a hue drift with no geometry, but the glitch on the same
@@ -902,55 +902,49 @@
    * shape, which is harmless for a pure translate but breaks the moment a
    * scale is added - and the orb has one.
    */
-  @keyframes hermes-wing-l {
+  /* The wing beats back along its own sweep; the small travel keeps its root
+     hidden under the helmet through the whole cycle. */
+  @keyframes hermes-wing {
     0%,
     100% {
       transform: translate(0, 0);
       filter: drop-shadow(0 0 1px color-mix(in oklab, var(--icon-a) 35%, transparent));
     }
     50% {
-      transform: translate(-1.7px, -1.2px);
+      transform: translate(-1.5px, -0.7px);
       filter: drop-shadow(0 0 4px color-mix(in oklab, var(--icon-a) 85%, transparent));
     }
   }
-  @keyframes hermes-wing-r {
+  /* The face and helm take the breath as LUMINANCE ONLY. A profile that
+     swells or drifts reads as a creature; light on bronze does not. */
+  @keyframes hermes-glow-a {
     0%,
     100% {
-      transform: translate(0, 0);
-      filter: drop-shadow(0 0 1px color-mix(in oklab, var(--icon-a) 35%, transparent));
+      filter: drop-shadow(0 0 1px color-mix(in oklab, var(--icon-a) 30%, transparent));
     }
     50% {
-      transform: translate(1.7px, -1.2px);
-      filter: drop-shadow(0 0 4px color-mix(in oklab, var(--icon-a) 85%, transparent));
+      filter: drop-shadow(0 0 3.5px color-mix(in oklab, var(--icon-a) 75%, transparent));
     }
   }
-  /* The helmet does not travel — a hat that drifts off the head reads as a
-     mistake — it takes the breath as luminance and a hair of swell only. */
-  @keyframes hermes-helm {
+  @keyframes hermes-glow-b {
     0%,
     100% {
-      transform: scale(1);
-      filter: drop-shadow(0 0 1px color-mix(in oklab, var(--icon-b) 35%, transparent));
+      filter: drop-shadow(0 0 1px color-mix(in oklab, var(--icon-b) 30%, transparent));
     }
     50% {
-      transform: scale(1.045);
-      filter: drop-shadow(0 0 4px color-mix(in oklab, var(--icon-b) 85%, transparent));
+      filter: drop-shadow(0 0 3.5px color-mix(in oklab, var(--icon-b) 75%, transparent));
     }
   }
-  .hermes-wing-l {
-    animation: hermes-wing-l 5.6s ease-in-out infinite;
-    transform-box: fill-box;
-    transform-origin: center;
-  }
-  .hermes-wing-r {
-    animation: hermes-wing-r 5.6s ease-in-out infinite;
+  .hermes-wing {
+    animation: hermes-wing 5.6s ease-in-out infinite;
     transform-box: fill-box;
     transform-origin: center;
   }
   .hermes-helm {
-    animation: hermes-helm 5.6s ease-in-out infinite;
-    transform-box: fill-box;
-    transform-origin: center;
+    animation: hermes-glow-a 5.6s ease-in-out infinite;
+  }
+  .hermes-head {
+    animation: hermes-glow-b 5.6s ease-in-out infinite;
   }
 }
 
