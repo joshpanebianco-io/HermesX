@@ -145,45 +145,63 @@ function Mark() {
       style={{ overflow: "visible" }}
     >
       {/*
-       * THE WINGED ORB — Hermes reduced to what survives at eighteen pixels.
-       * The god of messages carries one (the orb, up and to the right, in the
-       * chrome pair's second hue) at speed (the wing: three feather strokes
-       * trailing down-left, in the first). A caduceus or a winged sandal is
-       * the richer symbol and both are mud at this size; two shapes and five
-       * strokes is what actually reads across a desk.
+       * THE PETASOS — the winged helmet, front on, which is what "hermes icon"
+       * actually means in every icon set (owner pointed at the search results
+       * and asked for it). Chosen over the caduceus and the winged sandal by
+       * rendering all of them at 18 pixels and looking: the caduceus mushes
+       * into a vertical smudge, the sandal reads as a boot-shaped tick, and
+       * the SYMMETRIC helmet survives — symmetry is what miniaturises.
+       * Dome and brim in the chrome pair's second hue, two feathers a side in
+       * the first.
        */}
-      <g className="hermes-wing">
+      <g className="hermes-wing-l">
         <path
-          d="M17.5 9.5 C 12 7.5, 7 8.5, 3 11.5"
+          d="M8.5 18 C 5.5 14.5, 3.5 12.5, 1.5 12"
           fill="none"
           stroke="var(--icon-a)"
-          strokeWidth="2.6"
+          strokeWidth="2.5"
           strokeLinecap="round"
         />
         <path
-          d="M17 14 C 12.5 13.5, 9 14.5, 6 17"
+          d="M9.5 20 C 7 17.5, 5 16.5, 3 16.5"
           fill="none"
           stroke="var(--icon-a)"
-          strokeWidth="2.6"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+        />
+      </g>
+      <g className="hermes-wing-r">
+        <path
+          d="M23.5 18 C 26.5 14.5, 28.5 12.5, 30.5 12"
+          fill="none"
+          stroke="var(--icon-a)"
+          strokeWidth="2.5"
           strokeLinecap="round"
         />
         <path
-          d="M18 18.5 C 14.5 19, 12 20.5, 10.5 22.5"
+          d="M22.5 20 C 25 17.5, 27 16.5, 29 16.5"
           fill="none"
           stroke="var(--icon-a)"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+        />
+      </g>
+      <g className="hermes-helm">
+        <path
+          d="M8 21 A 8 8 0 0 1 24 21"
+          fill="none"
+          stroke="var(--icon-b)"
+          strokeWidth="2.8"
+          strokeLinecap="round"
+        />
+        <path
+          d="M5.5 21 L 26.5 21"
+          fill="none"
+          stroke="var(--icon-b)"
           strokeWidth="2.6"
           strokeLinecap="round"
         />
       </g>
-      <circle
-        className="hermes-orb"
-        cx="22"
-        cy="11"
-        r="5"
-        fill="none"
-        stroke="var(--icon-b)"
-        strokeWidth="2.8"
-      />
     </svg>
   );
 }

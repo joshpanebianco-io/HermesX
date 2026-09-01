@@ -12,10 +12,12 @@ function icon(a: string, b: string): string {
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">` +
     `<rect width="32" height="32" rx="7" fill="#0a0b10"/>` +
-    `<path d="M17.5 9.5 C 12 7.5, 7 8.5, 3 11.5" fill="none" stroke="${a}" stroke-width="2.6" stroke-linecap="round"/>` +
-    `<path d="M17 14 C 12.5 13.5, 9 14.5, 6 17" fill="none" stroke="${a}" stroke-width="2.6" stroke-linecap="round"/>` +
-    `<path d="M18 18.5 C 14.5 19, 12 20.5, 10.5 22.5" fill="none" stroke="${a}" stroke-width="2.6" stroke-linecap="round"/>` +
-    `<circle cx="22" cy="11" r="5" fill="none" stroke="${b}" stroke-width="2.8"/></svg>`
+    `<path d="M8.5 18 C 5.5 14.5, 3.5 12.5, 1.5 12" fill="none" stroke="${a}" stroke-width="2.5" stroke-linecap="round"/>` +
+    `<path d="M9.5 20 C 7 17.5, 5 16.5, 3 16.5" fill="none" stroke="${a}" stroke-width="2.5" stroke-linecap="round"/>` +
+    `<path d="M23.5 18 C 26.5 14.5, 28.5 12.5, 30.5 12" fill="none" stroke="${a}" stroke-width="2.5" stroke-linecap="round"/>` +
+    `<path d="M22.5 20 C 25 17.5, 27 16.5, 29 16.5" fill="none" stroke="${a}" stroke-width="2.5" stroke-linecap="round"/>` +
+    `<path d="M8 21 A 8 8 0 0 1 24 21" fill="none" stroke="${b}" stroke-width="2.8" stroke-linecap="round"/>` +
+    `<path d="M5.5 21 L 26.5 21" fill="none" stroke="${b}" stroke-width="2.6" stroke-linecap="round"/></svg>`
   );
 }
 
