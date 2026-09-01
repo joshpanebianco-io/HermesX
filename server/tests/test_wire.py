@@ -17,6 +17,7 @@ from newsterminal.sources.wire import (
     classify,
     dedupe,
     impact_of,
+    is_local_crime,
     is_section_page,
 )
 
@@ -225,3 +226,47 @@ def test_dedupe_keeps_the_earliest_filer() -> None:
     # yesterday's story as breaking all afternoon.
     assert out[0]["publisher"] == "CNBC"
     assert "Reuters" in out[0]["also"]
+
+
+# --- the police blotter -------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        # The one that shipped: on the HIGH crawl beside a strike on Iran,
+        # promoted end to end by `invasion` matching a burglary.
+        "Man shot and killed in Sydney home invasion was 'targeted attack', police believe",
+        "Teenager stabbed to death outside London nightclub",
+        "Body found in search for missing Queensland woman",
+        "Murder charge over hit-and-run in Melbourne's west",
+    ],
+)
+def test_the_police_blotter_is_not_market_news(title: str) -> None:
+    assert is_local_crime(title)
+    # And even if a variant slips the list, it must not rank as top-tier.
+    assert impact_of(title) != "high"
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        # Violence against a market figure repriced a sector in 2024.
+        "Hedge fund founder shot dead outside Miami office",
+        "Insurance CEO killed in targeted Manhattan attack, police say",
+    ],
+)
+def test_violence_against_a_market_figure_stays_on_the_tape(title: str) -> None:
+    assert not is_local_crime(title)
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Russia's invasion of Ukraine escalates as missiles hit Kyiv",
+        "China rehearses invasion of Taiwan in largest drills yet",
+    ],
+)
+def test_an_actual_invasion_still_ranks_high(title: str) -> None:
+    assert not is_local_crime(title)
+    assert impact_of(title) == "high"

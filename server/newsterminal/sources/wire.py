@@ -274,7 +274,7 @@ IMPACT_HIGH = re.compile(
     # crypto product, and ranked it beside a strike on Iran.
     r"bankrupt|bail(?:out|s out)|"
     # shooting, not talking
-    r"invasion|invade[sd]?|ceasefire|nuclear (?:test|strike|weapon)|"
+    r"(?<!home )invasion|invade[sd]?|ceasefire|nuclear (?:test|strike|weapon)|"
     r"(?:air)?strikes? on|missile(?:s)? (?:hit|struck|launched)|attack(?:s|ed) on|"
     r"assassinat|declares? war|shuts? down the strait|"
     # Added after they ranked low on a live tape. Each describes a thing that
@@ -418,13 +418,48 @@ def _when(raw: str) -> datetime | None:
 # An item that arrives on one and matches no desk keyword has to clear this to
 # stay: it is the difference between a geopolitics column and a tape with
 # "airline defends low-altitude stunt over packed stadium" on it.
+# THE POLICE BLOTTER, dropped on any desk. Observed 2026-09-01: "Man shot and
+# killed in Sydney home invasion was 'targeted attack', police believe"
+# (Guardian, world feed) rode the HIGH crawl beside an actual strike on Iran.
+# One word did all of it — `invasion`, written for armies, matching a burglary
+# — which put the story through the geo gate AND ranked it top-tier. The list
+# below names crime-story shapes, not violence words: "stabbed" appears here
+# and not in IMPACT_HIGH because a knife in a headline is almost never a
+# market event, while "missile" is almost always one.
+CRIME = re.compile(
+    r"home invasion|carjack|burglar|stabb(?:ing|ed)|manslaughter|homicide|"
+    r"murder (?:charge|trial|case|probe|investigation)|"
+    r"(?:man|woman|teen(?:ager)?|boy|girl) (?:shot|killed|stabbed|found dead)|"
+    r"shot (?:dead|and killed)|shooting at a? ?(?:school|mall|club|church)|"
+    r"body (?:found|discovered)|missing (?:man|woman|child|person|teen)|"
+    r"sexual assault|domestic violence|hit[- ]and[- ]run|drink[- ]driving",
+    re.I,
+)
+
+# The exception that proves the rule: violence against a market figure IS
+# market news — a shot CEO repriced an insurer's whole sector in 2024. If the
+# same headline names one of these, the crime drop stands down and the impact
+# tiers judge it like anything else.
+CRIME_GUARD = re.compile(
+    r"CEO|chief executive|executive|founder|chair(?:man|woman)?|banker|"
+    r"fund manager|hedge fund|billionaire|governor|minister|president|"
+    r"central bank|trader",
+    re.I,
+)
+
+
+def is_local_crime(title: str) -> bool:
+    """A police-blotter story with no market figure in it. Pure."""
+    return bool(CRIME.search(title)) and not CRIME_GUARD.search(title)
+
+
 GEO_RELEVANT = re.compile(
     r"sanction|tariff|embargo|export control|\boil\b|\bgas\b|energy|shipping|strait|canal|"
     r"central bank|currency|\bdebt\b|default|election|parliament|coalition|government|"
     r"minister|president|summit|\btrade\b|supply chain|chip|semiconductor|rare earth|"
     r"wheat|grain|\bport\b|pipeline|nuclear|treaty|\bdeal\b|talks|strike|protest|"
     r"inflation|economy|economic|\bGDP\b|growth|budget|stimulus|"
-    r"\bwar\b|militar|missile|drone|troops|ceasefire|invasion|attack|conflict",
+    r"\bwar\b|militar|missile|drone|troops|ceasefire|(?<!home )invasion|attack|conflict",
     re.I,
 )
 
@@ -482,7 +517,7 @@ def parse_feed(
                 # better attribution than the query's own label.
                 pub = m.group(0).lstrip(" -").strip()
                 title = title[: m.start()].strip()
-        if NOISE.search(title) or is_section_page(title):
+        if NOISE.search(title) or is_local_crime(title) or is_section_page(title):
             continue
         cat = classify(default_cat, title)
         # An item that arrived on a world feed and stayed on the geo desk was
