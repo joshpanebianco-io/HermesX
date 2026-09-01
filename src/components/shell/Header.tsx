@@ -48,7 +48,7 @@ export function Header({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
         <div className="flex items-center gap-2">
           <Mark />
-          <span className="wordmark fig text-[14px] font-semibold tracking-[0.14em]">
+          <span className="wordmark fig text-[16px] font-semibold tracking-[0.14em]">
             HERMESX
           </span>
         </div>
@@ -135,8 +135,8 @@ export function Header({
 function Mark() {
   return (
     <svg
-      width="22"
-      height="22"
+      width="26"
+      height="26"
       viewBox="0 0 512 512"
       aria-hidden
       className="shrink-0"
@@ -153,16 +153,23 @@ function Mark() {
        * enough to survive; at 128px it is invisible.
        */}
       <defs>
-        <linearGradient id="hermes-grad" x1="0" y1="0" x2="1" y2="1">
+        {/* Mirrored with the art (x runs 1 to 0), so the wing keeps the
+            first hue and the helm face the second — the same placement the
+            owner approved before choosing the flip. */}
+        <linearGradient id="hermes-grad" x1="1" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor="var(--icon-a)" />
           <stop offset="1" stopColor="var(--icon-b)" />
         </linearGradient>
       </defs>
+      {/* FLIPPED BY OWNER'S CALL (2026-09-01), seen both ways in the app:
+          the wing now leads on the right. The mirror is a transform on the
+          one canonical path, not a second trace. */}
       <path
         className="hermes-mark"
         fill="url(#hermes-grad)"
         stroke="url(#hermes-grad)"
         strokeWidth={8}
+        transform="translate(512 0) scale(-1 1)"
         d={HERMES_MARK_D}
       />
     </svg>

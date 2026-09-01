@@ -1,39 +1,35 @@
 import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
-import { THEME_COOKIE, hue, parseTheme, themeStyle } from "@/lib/theme";
+import { THEME_COOKIE, parseTheme, themeStyle } from "@/lib/theme";
 import { HERMES_MARK_D } from "@/lib/hermesMark";
 import "./globals.css";
 
 /**
- * The favicon is the same winged-orb lockup as the on-page mark, in the chrome
- * hues — inlined as an SVG data URI so there is no file to keep in step with
- * the palette and no request for 300 bytes.
+ * The favicon is the same winged-helm mark as the header, cut as a plain
+ * black glyph — inlined as an SVG data URI so there is no file to keep in
+ * step and no request for it.
  */
-function icon(a: string, b: string): string {
-  // The owner's winged helm (lib/hermesMark.ts). Stroked heavily: in a 16px
-  // tab the traced lines alone are under half a pixel and simply vanish.
+function icon(): string {
+  // JUST BLACK, at the owner's ask (2026-09-01) — a plain black glyph on a
+  // transparent tile, the way most site favicons are cut, so it no longer
+  // follows the theme hues. Mirrored to match the header. The stroke is what
+  // keeps sub-pixel line art alive in a 16px tab. If it ever disappears
+  // against a dark browser theme, the one-line fix is a light fill here.
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">` +
-    `<rect width="512" height="512" rx="112" fill="#0a0b10"/>` +
-    `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">` +
-    `<stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/>` +
-    `</linearGradient></defs>` +
-    `<path fill="url(#g)" stroke="url(#g)" stroke-width="14" transform="translate(51 51) scale(0.8)" d="${HERMES_MARK_D}"/></svg>`
+    `<path fill="#000" stroke="#000" stroke-width="14" transform="translate(461 51) scale(-0.8 0.8)" d="${HERMES_MARK_D}"/></svg>`
   );
 }
 
-/**
- * The tab icon follows the MARK's own two hues, which is why it cannot stay
- * hardcoded: a green-and-pink favicon above a retinted header is the one
- * mismatch guaranteed to be noticed, because both are on screen at once.
+/*
+ * THE TAB ICON USED TO FOLLOW THE THEME HUES, and the machinery for that —
+ * cookie read, theme parse, per-request metadata — came out when the owner
+ * asked for a plain black glyph (2026-09-01). Static art, static metadata.
  */
-export async function generateMetadata(): Promise<Metadata> {
-  const jar = await cookies();
-  const t = parseTheme(jar.get(THEME_COOKIE)?.value);
-  const svg = icon(hue(t.iconA, "green").neon, hue(t.iconB, "pink").neon);
+export function generateMetadata(): Metadata {
   return {
     ...baseMetadata,
-    icons: { icon: `data:image/svg+xml,${encodeURIComponent(svg)}` },
+    icons: { icon: `data:image/svg+xml,${encodeURIComponent(icon())}` },
   };
 }
 
