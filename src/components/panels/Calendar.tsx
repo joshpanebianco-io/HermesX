@@ -1,0 +1,354 @@
+"use client";
+
+import { useMemo } from "react";
+import type { CalendarRow, Impact, Region } from "@/types/terminal";
+import { Module } from "@/components/ui/Module";
+import { cn } from "@/lib/cn";
+import { isBool, oneOf, usePersisted } from "@/lib/usePersisted";
+
+/**
+ * The economic calendar.
+ *
+ * THE SURPRISE IS THE COLUMN THAT MATTERS. A print is not bullish or bearish
+ * on its own — it is bullish or bearish against what was already priced. So
+ * actual, consensus and previous sit together on one line and the gap between
+ * the first two is coloured, because the reaction is a function of that gap
+ * and nobody computes it well in the two seconds after 08:30.
+ *
+ * SIGN IS NOT DIRECTION. A hot CPI and a hot payrolls number are both "above
+ * consensus" and they mean opposite things for equities. So a surprise is
+ * coloured by MAGNITUDE alone — amber for a meaningful miss either way — and
+ * never green-for-good. Deciding what a beat means is the reader's job and the
+ * terminal has no business pretending otherwise.
+ */
+
+/**
+ * Score 0–5 collapsed to the same three tiers the wire uses.
+ *
+ * ONE VOCABULARY ACROSS THE TERMINAL. The calendar scores 0–5 internally
+ * because ranking needs the resolution, but a reader filtering two panels
+ * should not have to hold two scales in their head — "high" means the same
+ * thing on the tape and on the calendar.
+ */
+function tierOf(score: number): Impact {
+  if (score >= 4) return "high";
+  if (score === 3) return "medium";
+  return "low";
+}
+
+const TIERS: { key: Impact | "all"; label: string; hue: string; title: string }[] = [
+  { key: "all", label: "All", hue: "var(--ink-3)", title: "Every release on the calendar" },
+  { key: "high", label: "High", hue: "var(--err)", title: "Stops the tape: CPI, PCE, payrolls, FOMC, GDP" },
+  { key: "medium", label: "Med", hue: "var(--warn)", title: "Watched: PMI, ISM, claims, confidence, auctions" },
+  { key: "low", label: "Low", hue: "var(--ink-4)", title: "Context" },
+];
+
+/**
+ * Region, as the desk that trades it rather than the continent it is in.
+ *
+ * AUSTRALIA AND NEW ZEALAND SIT UNDER APAC with Japan and China because an RBA
+ * decision prints inside the Asia session and is read by whoever is trading it.
+ * Switzerland and the Nordics sit under EU for the same reason — they print into
+ * the London morning. A geographic grouping would split the Asia session across
+ * two chips and merge nothing useful.
+ */
+const REGIONS: { key: Region | "all"; label: string; title: string }[] = [
+  { key: "all", label: "All", title: "Every region" },
+  { key: "us", label: "US", title: "United States" },
+  { key: "eu", label: "EU", title: "Euro Zone, Germany, France, Switzerland, the Nordics" },
+  { key: "uk", label: "UK", title: "United Kingdom" },
+  { key: "apac", label: "APAC", title: "Japan, China, Hong Kong, Korea, Australia, New Zealand" },
+  { key: "other", label: "Other", title: "Everywhere else" },
+];
+
+export function Calendar({
+  rows,
+  ageMin,
+  error,
+}: {
+  rows: CalendarRow[];
+  ageMin?: number | null;
+  error?: string | null;
+}) {
+  const [tier, setTier] = usePersisted<Impact | "all">(
+    "cal.tier",
+    "all",
+    oneOf("all", "high", "medium", "low"),
+  );
+  /*
+   * MINE IS ON BY DEFAULT, and it is the filter that makes this panel usable.
+   * The raw calendar is 220 rows a day, most of it Korean industrial
+   * production and Italian unemployment. `core` is the collector's judgement
+   * about whether a release reaches NQ, ES or GC — theme and weight together,
+   * not country, so a Chinese GDP miss survives and a US housing-starts print
+   * does not.
+   */
+  const [coreOnly, setCoreOnly] = usePersisted<boolean>("cal.mine", true, isBool);
+  const [region, setRegion] = usePersisted<Region | "all">(
+    "cal.region",
+    "all",
+    oneOf("all", "us", "uk", "eu", "apac", "global", "other"),
+  );
+
+  const { upcoming, recent, counts, regionCounts } = useMemo(() => {
+    const now = Date.now() / 1000;
+    const pool = coreOnly ? rows.filter((r) => r.core) : rows;
+
+    // Each chip row counts against the OTHER filters, so a count is what you
+    // would actually get by clicking it rather than a total that goes stale the
+    // moment anything else moves.
+    const byRegion = region === "all" ? pool : pool.filter((r) => r.region === region);
+    const c: Record<string, number> = { all: byRegion.length };
+    for (const r of byRegion) {
+      const t = tierOf(r.score);
+      c[t] = (c[t] ?? 0) + 1;
+    }
+    const byTier = tier === "all" ? pool : pool.filter((r) => tierOf(r.score) === tier);
+    const rc: Record<string, number> = { all: byTier.length };
+    for (const r of byTier) rc[r.region] = (rc[r.region] ?? 0) + 1;
+
+    const keep = byRegion.filter((r) => tier === "all" || tierOf(r.score) === tier);
+    return {
+      counts: c,
+      regionCounts: rc,
+      upcoming: keep.filter((r) => !r.released && (r.ts ?? 0) >= now - 3600).slice(0, 20),
+      recent: keep
+        .filter((r) => r.released)
+        .sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0))
+        .slice(0, 8),
+    };
+  }, [rows, tier, coreOnly, region]);
+
+  return (
+    <Module
+      title="Calendar"
+      sub={coreOnly ? "reaches NQ · ES · GC" : "everything"}
+      ageMin={ageMin}
+      error={error}
+      bodyClassName="px-0 py-0"
+      /*
+       * CAPPED, WITH ITS OWN SCROLL. This feed carries 221 rows. Unfiltered and
+       * uncapped it was not a panel, it was a wall: every live panel below it in
+       * the column sat behind a fortnight of macro events, which is how sector
+       * rotation ended up six panels down and effectively unreachable.
+       *
+       * The cap is safe precisely because the rows are sorted by time — the ones
+       * you cannot see without scrolling are the ones furthest away, and the
+       * next few events are always the ones on screen. The filters live in the
+       * module head, which is outside the scrolling body, so narrowing the list
+       * never scrolls out of reach.
+       */
+      className="max-h-[340px]"
+      scroll
+      right={
+        <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            onClick={() => setCoreOnly((v) => !v)}
+            title={
+              coreOnly
+                ? "Showing only releases that reach the books you trade. Click for the full calendar."
+                : "Showing the full calendar. Click to narrow to what reaches NQ, ES and GC."
+            }
+            className={cn(
+              "fig hit mr-1 rounded px-1.5 py-px text-[9.5px] leading-[14px] tracking-wide uppercase",
+              coreOnly ? "bg-call/20 text-call" : "text-ink-4 hover:text-ink-2",
+            )}
+          >
+            Mine
+          </button>
+          {TIERS.map((t) => {
+            const on = tier === t.key;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setTier(t.key)}
+                title={t.title}
+                className={cn(
+                  "fig hit rounded px-1.5 py-px text-[9.5px] leading-[14px] tracking-wide uppercase",
+                  on ? "text-ink" : "text-ink-4 hover:text-ink-2",
+                )}
+                style={
+                  on ? { background: `color-mix(in oklab, ${t.hue} 26%, transparent)` } : undefined
+                }
+              >
+                {t.label}
+                <span className="ml-1 text-ink-4">{counts[t.key] ?? 0}</span>
+              </button>
+            );
+          })}
+        </div>
+      }
+    >
+      <div className="flex flex-wrap items-center gap-1 border-b border-ring/50 px-3 py-1.5">
+        {REGIONS.map((r) => {
+          const on = region === r.key;
+          return (
+            <button
+              key={r.key}
+              type="button"
+              onClick={() => setRegion(r.key)}
+              title={r.title}
+              className={cn(
+                "fig hit rounded px-1.5 py-0.5 text-[10px] tracking-wide uppercase",
+                on ? "bg-ink/10 text-ink" : "text-ink-4 hover:text-ink-2",
+              )}
+            >
+              {r.label}
+              <span className="ml-1 text-ink-4">{regionCounts[r.key] ?? 0}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {upcoming.length === 0 && recent.length === 0 ? (
+        <p className="px-3 py-6 text-center text-[11px] text-ink-4">
+          Nothing matches those filters.
+        </p>
+      ) : (
+        <>
+          {upcoming.length > 0 && (
+            <>
+              <Head>Ahead</Head>
+              <ul>
+                {upcoming.map((r, i) => (
+                  <Days key={`${r.event}-${r.utc}-${i}`} row={r} prev={upcoming[i - 1]} />
+                ))}
+              </ul>
+            </>
+          )}
+          {recent.length > 0 && (
+            <>
+              <Head>Just printed</Head>
+              <ul>
+                {recent.map((r, i) => (
+                  <Row key={`${r.event}-${r.utc}-p${i}`} r={r} />
+                ))}
+              </ul>
+            </>
+          )}
+        </>
+      )}
+    </Module>
+  );
+}
+
+/**
+ * One row, preceded by a day rule when the ET date has rolled over.
+ *
+ * WITHOUT THIS THE LIST LOOKS UNSORTED. The rows are in true chronological
+ * order, but the time column shows ET only — so a correctly-ordered list reads
+ * "02:30, 03:30, 05:45, 22:00, 00:00, 01:00" and the eye concludes it is
+ * scrambled. The day these belong to is the missing column, and a rule is
+ * cheaper than repeating a date on every line.
+ *
+ * KEYED OFF THE ET DATE, not the payload's `date` field — that one is the
+ * calendar's own UTC day, and a 22:00 ET release belongs to the following UTC
+ * date, which would put the rule in the wrong place.
+ */
+function Days({ row, prev }: { row: CalendarRow; prev?: CalendarRow }) {
+  const day = etDay(row);
+  const changed = !prev || etDay(prev) !== day;
+  return (
+    <>
+      {changed && (
+        <li className="flex items-center gap-2 px-3 pt-1.5 pb-0.5">
+          <span className="eyebrow text-[9px] text-ink-4">{day}</span>
+          <span className="h-px flex-1 bg-ring/50" aria-hidden />
+        </li>
+      )}
+      <Row r={row} />
+    </>
+  );
+}
+
+/** The ET calendar day a release falls on — "Mon 1 Sep". */
+function etDay(r: CalendarRow): string {
+  if (!r.utc) return "Unscheduled";
+  const d = new Date(r.utc);
+  if (Number.isNaN(d.getTime())) return "Unscheduled";
+  return d.toLocaleDateString("en-US", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "America/New_York",
+  });
+}
+
+function Head({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="border-y border-ring/40 bg-surface-2/50 px-3 py-1 first:border-t-0">
+      <span className="eyebrow text-[9px]">{children}</span>
+    </div>
+  );
+}
+
+function Row({ r }: { r: CalendarRow }) {
+  // Amber when the print is meaningfully away from consensus. "Meaningful" is
+  // relative to the consensus itself, so a 0.2 miss on a 3.0 CPI counts and a
+  // 0.2 miss on a 57.8 PMI does not.
+  const rel =
+    r.surprise !== null && r.consensus
+      ? Math.abs(r.surprise) / Math.max(0.1, Math.abs(r.consensus))
+      : 0;
+  const surprised = r.surprise !== null && (rel > 0.05 || Math.abs(r.surprise) >= 0.2);
+
+  return (
+    <li className="hit flex items-baseline gap-2 px-3 py-[3px]" title={r.note ?? undefined}>
+      <span className="fig w-[36px] shrink-0 text-[10px] text-ink-4">{r.et ?? "—"}</span>
+      <span
+        className={cn(
+          "w-[6px] shrink-0 self-center rounded-full",
+          r.score >= 5 ? "h-[6px] bg-flip" : r.score >= 4 ? "h-[5px] bg-ink-3" : "h-[4px] bg-ink-4",
+        )}
+        aria-hidden
+      />
+      <span className="fig hidden w-[24px] shrink-0 text-[9.5px] text-ink-4 sm:block">
+        {country(r.country)}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[11px] text-ink-2">{r.event}</span>
+      {r.session && r.session !== "closed" && (
+        <span
+          className="fig hidden w-[38px] shrink-0 text-[9px] text-ink-4 md:block"
+          title={`Prints during the ${r.session} session`}
+        >
+          {r.session}
+        </span>
+      )}
+      <span
+        className={cn(
+          "fig w-[46px] shrink-0 text-right text-[10.5px]",
+          r.released ? (surprised ? "text-flip" : "text-ink") : "text-ink-4",
+        )}
+      >
+        {r.actual_raw ?? "—"}
+      </span>
+      <span className="fig w-[42px] shrink-0 text-right text-[10px] text-ink-4">
+        {r.consensus_raw ?? "—"}
+      </span>
+    </li>
+  );
+}
+
+/** Three letters is enough to place a release and costs a third of the width. */
+function country(c: string): string {
+  const map: Record<string, string> = {
+    "United States": "US",
+    "Euro Zone": "EZ",
+    "United Kingdom": "UK",
+    Germany: "DE",
+    Japan: "JP",
+    China: "CN",
+    Canada: "CA",
+    Australia: "AU",
+    France: "FR",
+    Italy: "IT",
+    Switzerland: "CH",
+    "South Korea": "KR",
+    "Hong Kong": "HK",
+    India: "IN",
+    Brazil: "BR",
+  };
+  return map[c] ?? c.slice(0, 2).toUpperCase();
+}

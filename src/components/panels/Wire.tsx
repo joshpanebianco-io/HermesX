@@ -1,0 +1,249 @@
+"use client";
+
+import { useMemo } from "react";
+import type { Desk, Impact, WireItem } from "@/types/terminal";
+import { Module } from "@/components/ui/Module";
+import { ago } from "@/lib/format";
+import { cn } from "@/lib/cn";
+import { oneOf, usePersisted } from "@/lib/usePersisted";
+
+/**
+ * The wire — every desk's headlines on one tape.
+ *
+ * A LIST, NOT A CRAWL. GEXYGEN's WireTicker scrolls its headlines past because
+ * it is a one-line strip inside a dashboard about something else. Here the
+ * wire IS the product, it has a full column, and a moving target you cannot
+ * scan or click without chasing is the wrong answer at that size. It updates
+ * in place; new items slide in so an insertion above the line you are reading
+ * announces itself instead of silently shifting the page.
+ *
+ * THE DESK RAIL CARRIES IDENTITY, THE TEXT STAYS NEUTRAL. Each item has a 3px
+ * coloured rail on its left and white-ish headline text. Colouring the
+ * headline itself would collide with the data palette, where green and red
+ * mean up and down — a green headline must never read as "this is bullish".
+ *
+ * EVERY LINE NAMES ITS PUBLISHER AND LINKS BACK. That is both the decent thing
+ * and what keeps a personal aggregator defensible: the title is the thinnest
+ * copyright there is and the link sends the reader to the outlet that paid for
+ * the reporting.
+ */
+
+const DESKS: { key: Desk | "all"; label: string; hue: string }[] = [
+  { key: "all", label: "All", hue: "var(--ink-3)" },
+  { key: "markets", label: "Markets", hue: "var(--desk-markets)" },
+  { key: "corp", label: "Companies", hue: "var(--desk-corp)" },
+  { key: "macro", label: "Macro", hue: "var(--desk-macro)" },
+  { key: "policy", label: "Policy", hue: "var(--desk-policy)" },
+  { key: "geo", label: "Geopolitics", hue: "var(--desk-geo)" },
+  { key: "energy", label: "Energy", hue: "var(--desk-energy)" },
+];
+
+const HUE: Record<Desk, string> = {
+  markets: "var(--desk-markets)",
+  corp: "var(--desk-corp)",
+  macro: "var(--desk-macro)",
+  policy: "var(--desk-policy)",
+  geo: "var(--desk-geo)",
+  energy: "var(--desk-energy)",
+};
+
+/**
+ * Impact, as three exclusive filters rather than a cumulative threshold.
+ *
+ * "HIGH" MEANS ONLY HIGH. A "high and above" reading would make the top filter
+ * identical to the unfiltered tape whenever nothing big is happening, which is
+ * precisely when you would be checking it. Exclusive means switching to HIGH
+ * either leaves you with six lines or with none, and both are answers.
+ */
+const IMPACTS: { key: Impact | "all"; label: string; hue: string; title: string }[] = [
+  { key: "all", label: "All", hue: "var(--ink-3)", title: "Every headline on the tape" },
+  {
+    key: "high",
+    label: "High",
+    hue: "var(--err)",
+    title: "A released number or a decided event — reprices on the spot",
+  },
+  {
+    key: "medium",
+    label: "Med",
+    hue: "var(--warn)",
+    title: "Moves things over a session: officials, policy, deals, supply",
+  },
+  { key: "low", label: "Low", hue: "var(--ink-4)", title: "Context" },
+];
+
+export function Wire({
+  items,
+  now,
+  ageMin,
+  error,
+}: {
+  items: WireItem[];
+  /** The live clock. Null until mounted — see `ago`. */
+  now: number | null;
+  ageMin?: number | null;
+  error?: string | null;
+}) {
+  const [desk, setDesk] = usePersisted<Desk | "all">(
+    "wire.desk",
+    "all",
+    oneOf("all", "markets", "corp", "macro", "policy", "geo", "energy"),
+  );
+  const [impact, setImpact] = usePersisted<Impact | "all">(
+    "wire.impact",
+    "all",
+    oneOf("all", "high", "medium", "low"),
+  );
+
+  // Counts are computed against the OTHER filter, so each row of chips shows
+  // what you would actually get by clicking it rather than a total that goes
+  // stale the moment the other filter moves.
+  const deskCounts = useMemo(() => {
+    const pool = impact === "all" ? items : items.filter((i) => i.impact === impact);
+    const c: Record<string, number> = { all: pool.length };
+    for (const i of pool) c[i.category] = (c[i.category] ?? 0) + 1;
+    return c;
+  }, [items, impact]);
+
+  const impactCounts = useMemo(() => {
+    const pool = desk === "all" ? items : items.filter((i) => i.category === desk);
+    const c: Record<string, number> = { all: pool.length };
+    for (const i of pool) c[i.impact] = (c[i.impact] ?? 0) + 1;
+    return c;
+  }, [items, desk]);
+
+  const shown = useMemo(() => {
+    let list = desk === "all" ? items : items.filter((i) => i.category === desk);
+    if (impact !== "all") list = list.filter((i) => i.impact === impact);
+    return list.slice(0, 150);
+  }, [items, desk, impact]);
+
+  return (
+    <Module
+      title="Wire"
+      sub={`${items.length} stories`}
+      ageMin={ageMin}
+      error={error}
+      className="min-h-0 flex-1"
+      bodyClassName="min-h-0 overflow-y-auto"
+      right={
+        <div className="flex items-center gap-0.5">
+          {IMPACTS.map((im) => {
+            const on = impact === im.key;
+            const n = impactCounts[im.key] ?? 0;
+            return (
+              <button
+                key={im.key}
+                type="button"
+                onClick={() => setImpact(im.key)}
+                title={im.title}
+                className={cn(
+                  "fig hit rounded px-1.5 py-px text-[9.5px] leading-[14px] tracking-wide uppercase",
+                  on ? "text-ink" : "text-ink-4 hover:text-ink-2",
+                )}
+                style={
+                  on ? { background: `color-mix(in oklab, ${im.hue} 26%, transparent)` } : undefined
+                }
+              >
+                {im.label}
+                <span className="ml-1 text-ink-4">{n}</span>
+              </button>
+            );
+          })}
+        </div>
+      }
+    >
+      <div className="sticky top-0 z-10 -mx-px flex flex-wrap gap-1 border-b border-ring/60 bg-surface px-3 py-1.5">
+        {DESKS.map((d) => {
+          const on = desk === d.key;
+          const n = deskCounts[d.key] ?? 0;
+          return (
+            <button
+              key={d.key}
+              type="button"
+              onClick={() => setDesk(d.key)}
+              className={cn(
+                "fig hit rounded px-1.5 py-0.5 text-[10px] tracking-wide uppercase",
+                on ? "text-ink" : "text-ink-4 hover:text-ink-2",
+              )}
+              style={on ? { background: `color-mix(in oklab, ${d.hue} 22%, transparent)` } : undefined}
+            >
+              <span
+                className="mr-1 inline-block h-[6px] w-[6px] rounded-full align-middle"
+                style={{ background: d.hue }}
+              />
+              {d.label}
+              <span className="ml-1 text-ink-4">{n}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {shown.length === 0 ? (
+        <p className="px-3 py-6 text-center text-[11px] text-ink-4">
+          {items.length === 0
+            ? "No headlines yet — the collector polls the wire every two minutes."
+            : "Nothing on this desk right now."}
+        </p>
+      ) : (
+        <ul className="divide-y divide-ring/40">
+          {shown.map((h) => (
+            <Item key={`${h.url}-${h.ts ?? 0}`} h={h} now={now} />
+          ))}
+        </ul>
+      )}
+    </Module>
+  );
+}
+
+function Item({ h, now }: { h: WireItem; now: number | null }) {
+  return (
+    <li className="wire-in">
+      <a
+        href={h.url}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="hit relative flex min-w-0 flex-col gap-0.5 py-1.5 pr-3 pl-3.5"
+      >
+        <span
+          aria-hidden
+          className="absolute inset-y-0 left-0 w-[3px]"
+          style={{ background: HUE[h.category] }}
+        />
+        <div className="flex min-w-0 items-baseline gap-1.5">
+          {/*
+           * ONLY HIGH AND MEDIUM CARRY A MARK. Low is most of the tape, and a
+           * badge on every line is a badge on no line — the absence of a mark
+           * is what makes the two that have one findable.
+           */}
+          {h.impact !== "low" && (
+            <span
+              className={cn(
+                "fig shrink-0 rounded-sm px-1 text-[9px] leading-[13px]",
+                h.impact === "high" ? "bg-err/25 text-err" : "bg-warn/20 text-warn",
+              )}
+              title={h.impact === "high" ? "High impact" : "Medium impact"}
+            >
+              {h.impact === "high" ? "H" : "M"}
+            </span>
+          )}
+          <span className="min-w-0 flex-1 text-[12px] leading-[1.35] text-ink">{h.title}</span>
+          <span className="fig shrink-0 text-[9.5px] text-ink-4 tabular-nums">
+            {ago(h.utc, now)}
+          </span>
+        </div>
+        {h.summary && (
+          <p className="line-clamp-2 pr-6 text-[10.5px] leading-[1.4] text-ink-3">{h.summary}</p>
+        )}
+        <div className="flex items-center gap-1.5 text-[9.5px] text-ink-4">
+          <span className="text-ink-3">{h.publisher}</span>
+          {h.also && h.also.length > 0 && (
+            <span title={`Also filed by ${h.also.join(", ")}`}>+{h.also.length}</span>
+          )}
+          <span aria-hidden>·</span>
+          <span className="uppercase">{h.category}</span>
+        </div>
+      </a>
+    </li>
+  );
+}

@@ -1,0 +1,7 @@
+fastapi>=0.115,<0.116
+starlette>=0.40,<0.42
+uvicorn[standard]>=0.30
+# Windows has no zoneinfo database of its own, and every clock in this service
+# is defined in a named zone (ET for the session markers, seven city zones for
+# the board). The deliberate exception to the stdlib-only rule.
+tzdata

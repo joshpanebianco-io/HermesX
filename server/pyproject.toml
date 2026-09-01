@@ -1,0 +1,50 @@
+[project]
+name = "newsterminal-server"
+version = "0.1.0"
+description = "NewsTerminal collector — many feeds in, one warm snapshot out."
+requires-python = ">=3.11"
+
+[tool.ruff]
+# 100, matching GEXYGEN. The prose comments in this codebase are load-bearing
+# and reflowing them to satisfy 88 would be churn rather than quality.
+line-length = 100
+target-version = "py311"
+exclude = [".venv", "__pycache__", "cache"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "BLE", "RUF"]
+ignore = [
+    # Em-dashes, arrows and curly quotes in PROSE COMMENTS. These rules exist
+    # to catch homoglyph attacks in identifiers; every hit here is deliberate
+    # punctuation in a sentence.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# The probe prints aligned tables of live source output, and the format strings
+# that produce a readable column layout do not survive being wrapped at 100.
+# It is a diagnostic script, not part of the service.
+"tools/*" = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["newsterminal"]
+# A TOML LITERAL STRING (single quotes), which takes no escapes at all — the
+# basic-string form needs `\\.` for a regex dot and silently fails to parse
+# with a single backslash.
+exclude = '(\.venv|__pycache__|cache|tools)'
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["uvicorn.*", "fastapi.*", "starlette.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"

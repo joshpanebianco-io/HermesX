@@ -1,0 +1,262 @@
+"""
+The collector — one background thread, many clocks.
+
+WHY A THREAD AND NOT A REQUEST HANDLER. If the panels fetched on demand, the
+first load after a cold start would sit for thirty seconds while forty
+upstreams answered one at a time, and every reader who opened a second tab
+would pay it again. The collector keeps a warm snapshot and the API hands out
+whatever it currently holds; a page load costs one in-memory read.
+
+WHY ONE THREAD AND NOT A POOL. The cadences are seconds to half-hours apart, so
+at any given tick there is usually one source due, occasionally two. A pool
+would buy nothing and would mean the tick log — the thing this window exists to
+show — could interleave two half-written rows.
+
+EVERY SOURCE IS INDEPENDENT. A source that raises is caught, logged on its own
+row, and leaves the previous good data in place with its age climbing. That is
+why `age_min` is on every block: a panel showing eleven-minute-old sector data
+is fine as long as it says eleven minutes.
+"""
+
+from __future__ import annotations
+
+import threading
+import time
+import traceback
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any
+from zoneinfo import ZoneInfo
+
+from . import config
+from .expiry import state as expiry_state
+from .http import SourceStatus
+from .policy import meetings_priced
+from .sessions import session_state
+from .sources import calendar as cal_src
+from .sources import constituents as cons_src
+from .sources import earnings as earn_src
+from .sources import fedcal as fed_src
+from .sources import gex as gex_src
+from .sources import quotes as quotes_src
+from .sources import ranges as ranges_src
+from .sources import rates as rates_src
+from .sources import wire as wire_src
+from .volterm import state as volterm_state
+
+ET = ZoneInfo("America/New_York")
+
+# Widths chosen so the row stays aligned once the longest source name and a
+# four-digit item count are in it. A tick log that reflows is a tick log you
+# stop being able to scan.
+_HEAD = f"{'TIME':<9}{'SOURCE':<12}{'ITEMS':>6}  {'AGE':>6}  {'SRC':<7}STATUS"
+
+
+class Collector:
+    """Holds the terminal's whole state and refreshes it on schedule."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self.started_utc = datetime.now(UTC).isoformat()
+
+        # block name → (fn, interval_sec, next_due_monotonic)
+        self._jobs: dict[str, tuple[Callable[[], None], float, float]] = {}
+        self._state: dict[str, Any] = {
+            "quotes": [], "sectors": [], "wire": [], "calendar": [], "earnings": [],
+            "rates": {}, "ranges": {"assets": {}}, "constituents": {"indices": {}},
+            "fed": [],
+            "fomc": [],
+            "gex": {"assets": {}, "enabled": bool(config.GEXYGEN_API)},
+        }
+        self._status: dict[str, SourceStatus] = {}
+        self._updated: dict[str, float] = {}
+        self._logged_header = False
+
+        now = time.monotonic()
+        self._jobs = {
+            # Quotes first: it is the block every other panel is read against,
+            # and a board with no prices is not a terminal.
+            "quotes": (self._do_quotes, config.QUOTES_SEC, now),
+            "gex": (self._do_gex, config.GEX_SEC, now + 0.4),
+            "wire": (self._do_wire, config.WIRE_SEC, now + 0.8),
+            "sectors": (self._do_sectors, config.QUOTES_SEC * 15, now + 1.2),
+            "calendar": (self._do_calendar, config.CALENDAR_SEC, now + 1.6),
+            "rates": (self._do_rates, config.RATES_SEC, now + 2.0),
+            # Session ranges move with price but the WINDOWS only close four
+            # times a day, so a minute is ample and matches nothing else.
+            "ranges": (self._do_ranges, 60.0, now + 2.4),
+            # Earnings change when a company reports, which is twice a day at
+            # the bells. Half-hourly is generous.
+            "earnings": (self._do_earnings, 1800.0, now + 2.8),
+            # Weights move once a day and are cached hard; this cadence is
+            # really about the 40 quotes behind them.
+            "constituents": (self._do_constituents, 90.0, now + 3.2),
+            # The Board publishes weeks ahead and amends rarely.
+            "fed": (self._do_fed, 3600.0, now + 3.6),
+        }
+
+    # ---------------------------------------------------------------- jobs
+
+    def _commit(self, name: str, data: Any, st: SourceStatus) -> None:
+        with self._lock:
+            if data is not None:
+                self._state[name] = data
+            self._status[name] = st
+            if st.ok:
+                self._updated[name] = time.time()
+        self._log(name, st)
+
+    def _do_quotes(self) -> None:
+        rows, st = quotes_src.collect()
+        self._commit("quotes", rows if st.ok else None, st)
+
+    def _do_sectors(self) -> None:
+        rows, st = quotes_src.collect_sectors()
+        self._commit("sectors", rows if st.ok else None, st)
+
+    def _do_wire(self) -> None:
+        items, feeds = wire_src.collect()
+        st = SourceStatus("wire")
+        live = [f for f in feeds if f.ok]
+        st.ok = bool(items)
+        st.items = len(items)
+        st.source = "live" if st.ok else "unavailable"
+        st.age_min = 0.0 if st.ok else None
+        st.notes = [f"{len(live)}/{len(feeds)} feeds"]
+        dead = [f for f in feeds if not f.ok]
+        if dead:
+            st.error = f"{len(dead)} feed(s) down: " + ", ".join(f.name for f in dead[:3])
+        if st.ok:
+            st.last_ok_utc = datetime.now(UTC).isoformat()
+        with self._lock:
+            self._state["wire_feeds"] = [f.as_dict() for f in feeds]
+        self._commit("wire", items if st.ok else None, st)
+
+    def _do_calendar(self) -> None:
+        rows, st = cal_src.collect()
+        self._commit("calendar", rows if st.ok else None, st)
+
+    def _do_rates(self) -> None:
+        data, st = rates_src.collect()
+        self._commit("rates", data if st.ok else None, st)
+
+    def _do_ranges(self) -> None:
+        data, st = ranges_src.collect()
+        self._commit("ranges", data if st.ok else None, st)
+
+    def _do_earnings(self) -> None:
+        rows, st = earn_src.collect()
+        self._commit("earnings", rows if st.ok else None, st)
+
+    def _do_constituents(self) -> None:
+        data, st = cons_src.collect()
+        self._commit("constituents", data if st.ok else None, st)
+
+    def _do_fed(self) -> None:
+        rows, fomc, st = fed_src.collect()
+        self._commit("fed", rows if st.ok else None, st)
+        # The schedule rides the same fetch but is not a source of its own:
+        # it has no panel, no age chip, and no failure mode separate from the
+        # diary's, so a second status row would be bookkeeping about nothing.
+        if st.ok:
+            with self._lock:
+                self._state["fomc"] = fomc
+
+    def _do_gex(self) -> None:
+        data, st = gex_src.collect()
+        # Committed even when not ok: the panel needs the per-asset error text
+        # to say WHICH asset is missing and why, and a preserved older payload
+        # would be a stale gamma level, which this must never show.
+        self._commit("gex", data, st)
+
+    # ---------------------------------------------------------------- loop
+
+    def _log(self, name: str, st: SourceStatus) -> None:
+        if not config.TICK_LOG:
+            return
+        if not self._logged_header:
+            print(f"\n{_HEAD}", flush=True)
+            self._logged_header = True
+        t = datetime.now(ET).strftime("%H:%M:%S")
+        age = f"{st.age_min:.1f}m" if st.age_min is not None else "—"
+        state = "ok" if st.ok else "ERR"
+        print(f"{t:<9}{name:<12}{st.items:>6}  {age:>6}  {st.source:<7}{state}", flush=True)
+        # Anything degraded gets its own line underneath, so a dead feed
+        # cannot hide between healthy rows. Straight out of GEXYGEN's window.
+        if st.error:
+            print(f"{'':<9}└─ {st.error}", flush=True)
+        for n in st.notes:
+            if not st.ok or "down" in n or "unavailable" in n or "failed" in n:
+                print(f"{'':<9}└─ {n}", flush=True)
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            now = time.monotonic()
+            for name, (fn, interval, due) in list(self._jobs.items()):
+                if now < due:
+                    continue
+                try:
+                    fn()
+                except Exception as e:  # noqa: BLE001 — see module docstring
+                    st = SourceStatus(name)
+                    st.error = f"{e.__class__.__name__}: {e}"
+                    self._status[name] = st
+                    self._log(name, st)
+                    traceback.print_exc()
+                self._jobs[name] = (fn, interval, time.monotonic() + interval)
+            # 0.25s rather than a computed sleep-until-next-due: the loop must
+            # also notice _stop promptly, and a quarter second of idle polling
+            # costs nothing next to forty HTTP requests a minute.
+            self._stop.wait(0.25)
+
+    def start(self) -> None:
+        if self._thread and self._thread.is_alive():
+            return
+        self._thread = threading.Thread(target=self._run, name="collector", daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=3)
+
+    # ---------------------------------------------------------------- read
+
+    def snapshot(self) -> dict[str, Any]:
+        """Everything, as one object. Thread-safe."""
+        with self._lock:
+            state = {k: v for k, v in self._state.items()}
+            status = {k: v.as_dict() for k, v in self._status.items()}
+            updated = dict(self._updated)
+
+        now = time.time()
+        ages = {k: round((now - t) / 60.0, 2) for k, t in updated.items()}
+        ready = bool(state.get("quotes"))
+        return {
+            "ok": ready,
+            "built_utc": datetime.now(UTC).isoformat(),
+            "started_utc": self.started_utc,
+            # The session clock takes the Fed calendar so its 14:00 marker can be a
+            # real meeting rather than a daily assumption.
+            "clock": session_state(fed=state.get("fed") or []),
+            # Pure date arithmetic on the ET calendar, so it is computed on read
+            # rather than polled — there is no upstream to be stale against.
+            "expiry": expiry_state(),
+            # Arithmetic on the board, like `expiry` — no upstream to be
+            # stale against, so it is computed on read rather than polled.
+            "volterm": volterm_state(state.get("quotes") or []),
+            # The strip and the meeting schedule are both already in state, so
+            # what each FOMC has priced into it is arithmetic on read — the
+            # same standing as `volterm` and `expiry`.
+            "policy_meetings": meetings_priced(
+                state.get("rates") or {}, state.get("fomc") or []
+            ),
+            "status": status,
+            "age_min": ages,
+            **state,
+        }
+
+
+COLLECTOR = Collector()

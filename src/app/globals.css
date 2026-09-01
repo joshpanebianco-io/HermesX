@@ -1,0 +1,959 @@
+@import "tailwindcss";
+
+/*
+ * NewsTerminal design tokens.
+ *
+ * THE PALETTE IS GEXYGEN'S, AND DELIBERATELY SO. The surfaces, the ink ramp
+ * and the nine data hues are lifted byte-identical from that project's
+ * globals.css, because these two things sit open side by side on one desk and
+ * a call wall that is teal on one screen and something else on the other is a
+ * lie told by a stylesheet. The gamma levels this terminal borrows from
+ * GEXYGEN therefore render in exactly the colours GEXYGEN gives them — and so
+ * do NinjaTrader and the TradingView indicator, which share the same nine.
+ *
+ * WHAT IS NEW HERE is that those hues carry a second meaning this product
+ * needs and GEXYGEN does not: direction. Teal is calls AND up; magenta is puts
+ * AND down; amber is the gamma flip AND a headline that demands attention.
+ * That doubling is safe because the two never appear in the same object — a
+ * price change is never a strike, and a wall never has a percentage on it.
+ *
+ * Colour means exactly one thing per context:
+ *   teal    up, positive, calls, positive gamma
+ *   magenta down, negative, puts, negative gamma
+ *   amber   attention: the flip level, a hot headline, a release due
+ *   white   the last print, spot
+ *   grey    all structure and chrome
+ *
+ * The neons are decoration only — glows and the wordmark — never a figure.
+ */
+
+:root {
+  /* Surfaces. --void is outside the chassis, --bg inside it: two steps of the
+     same near-black, which is what makes the frame read as an instrument on a
+     desk rather than a document with panels on it. */
+  --void: #05060a;
+  --bg: #0a0b10;
+  --surface: #11131a;
+  --surface-2: #171a24;
+  --surface-3: #1d2130;
+  --ring: #232733;
+  --ring-2: #3a3f4d;
+
+  /* Ink — a four-tier ramp, contrast measured against --surface #11131a.
+     Hue is spoken for by the data, so hierarchy is carried by value alone. */
+  --ink: #f2f4f8;   /* 16.85:1 */
+  --ink-2: #a8adbb; /*  8.27:1 */
+  --ink-3: #7d8394; /*  4.90:1 — body copy, the AA floor */
+  --ink-4: #6b7080; /*  3.76:1 — chrome ONLY: dots, rules, disabled. Never copy. */
+
+  --grid: #313747;
+
+  /* Data — GEXYGEN's canonical nine. Do not retune. */
+  --call: #00ac77;
+  --put: #bc2071;
+  --flip: #c9962e;
+  --spot: #dfe3ec;
+  --em: #7a8499;
+  --call-dte: #0a7d5a;
+  --put-dte: #8e2a5e;
+
+  /* State */
+  --warn: #d9a13b;
+  --err: #e05252;
+  --ok: #00ac77;
+
+  /* Neon — the vibrancy layer. Glow and gradient only. */
+  --neon-call: #00ffb2;
+  --neon-put: #ff4fa3;
+  --neon-flip: #ffd24a;
+  --neon-spot: #ffffff;
+
+  /* Chrome, kept off the data tokens so a hue here can never be read as a
+     figure. Same three-lockup split GEXYGEN uses. */
+  --icon-a: #00ffb2;
+  --icon-b: #ff4fa3;
+  --title-a: #00ffb2;
+  --title-a-lift: #7ff0d0;
+  --title-b: #ff4fa3;
+  --title-b-lift: #ffb0d8;
+  /*
+   * The wordmark's THIRD stop — the near-white sheen that crosses the
+   * letterforms. Easy to mistake for a highlight rather than a hue, but it is a
+   * real stop: a straight ramp between two saturated ends passes through a dull
+   * grey-blue midpoint, so the gradient is routed through this instead. Taken
+   * from a hue's `lift` tier rather than its neon, which is what keeps any
+   * choice here luminous — picking a hue tints the sheen rather than darkening
+   * it back into the problem it exists to solve.
+   */
+  --title-sheen: #e6f4f3;
+  --frame-a: #00ffb2;
+  --frame-b: #ff4fa3;
+
+  /*
+   * THE DESK HUES — one per wire category.
+   *
+   * These are NOT the data palette and must never be mistaken for it, which is
+   * why none of them is --call or --put: a green headline does not mean the
+   * market went up. They are identity tags, tuned to sit at roughly equal
+   * value so no desk shouts louder than another, and they are only ever used
+   * on a 3px rail or a dot, never on the headline text itself.
+   */
+  --desk-markets: #4d9fd6;
+  --desk-corp: #7f8fa6;
+  --desk-macro: #9a7fe0;
+  --desk-policy: #d9a13b;
+  --desk-geo: #e0644f;
+  --desk-energy: #46b39d;
+
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", "Consolas", monospace;
+}
+
+@theme inline {
+  --color-void: var(--void);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-ring: var(--ring);
+  --color-ring-2: var(--ring-2);
+
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
+  --color-grid: var(--grid);
+
+  --color-call: var(--call);
+  --color-put: var(--put);
+  --color-flip: var(--flip);
+  --color-spot: var(--spot);
+  --color-em: var(--em);
+
+  --color-warn: var(--warn);
+  --color-err: var(--err);
+  --color-ok: var(--ok);
+
+  --color-neon-call: var(--neon-call);
+  --color-neon-put: var(--neon-put);
+  --color-neon-flip: var(--neon-flip);
+
+  --color-desk-markets: var(--desk-markets);
+  --color-desk-corp: var(--desk-corp);
+  --color-desk-macro: var(--desk-macro);
+  --color-desk-policy: var(--desk-policy);
+  --color-desk-geo: var(--desk-geo);
+  --color-desk-energy: var(--desk-energy);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background: var(--void);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Every figure is a tabular-numeral monospace, so a number that ticks does
+     not reflow the label beside it. On a board of forty rows updating every
+     twenty seconds this is the difference between a terminal and a jitter. */
+  .fig {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    letter-spacing: -0.01em;
+  }
+
+  .eyebrow {
+    font-size: 10px;
+    line-height: 1.2;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--flip);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--call) 35%, transparent);
+  }
+
+  /* The terminal is a dense scrolling instrument; the default scrollbar is a
+     bright slab that competes with the data. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--ring-2) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--ring-2);
+    border-radius: 6px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/*
+ * The travelling light on the chassis edge. Registered rather than declared,
+ * because a plain custom property is an unparsed string to the animation
+ * engine and would flip at the halfway point instead of sweeping.
+ */
+@property --border-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@layer components {
+  /*
+   * THE CHASSIS.
+   *
+   * One bounded, bordered surface with a header rail on top and a status rail
+   * pinned to the bottom. A document bleeds to the edge of the browser; an
+   * instrument has a frame, and the frame is what tells you the thing has a
+   * state you are operating rather than a page you are reading.
+   */
+  .app-frame {
+    position: relative;
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in oklab, var(--ink) 2%, transparent) 0%,
+        transparent 160px
+      ),
+      var(--bg);
+    border: 1px solid var(--ring-2);
+    border-radius: 14px;
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--void) 60%, transparent),
+      0 24px 60px -30px rgb(0 0 0 / 0.9);
+  }
+
+  /*
+   * THE STATIC TOP HAIRLINE IS GONE, and it had to be.
+   *
+   * It was a two-hue gradient on the top edge as a "this instrument is on" cue,
+   * from before the frame had a light at all. Once the frame effects below
+   * arrived it became noise in every mode: in Off it was colour on a frame
+   * meant to be plain, and in Travel or Breathe it was a second, static light
+   * competing with the real one. GEXYGEN removed its own for exactly this
+   * reason (2026-08-16) and the same argument applies here. The chassis is
+   * plain in every mode; the effect, when chosen, is the only light on it.
+   *
+   * ---------------------------------------------------------------------
+   * THE TRAVELLING LIGHT — a charge running the whole perimeter, clockwise.
+   *
+   * A conic gradient rotated by an animated angle, then masked down to a ring.
+   * `mask-composite: exclude` punches the content box out of a full-bleed
+   * background, which is what lets the light survive the rounded corners
+   * exactly — four edge gradients or a border-image both break there, and a
+   * corner that drops the light is worse than no light.
+   *
+   * CLOCKWISE FROM TWELVE, so it crosses the top edge left to right — the same
+   * direction the wordmark's sheen runs. Two moving things in the chrome
+   * disagreeing about direction reads as a mistake even when nobody can say
+   * why.
+   *
+   * The head is `--frame-b` and the tail fades through `--frame-a`: the two
+   * chrome hues the theme already owns, so this introduces no new colour.
+   *
+   * NO `animation` HERE, deliberately. A CSS animation of `--border-angle` is
+   * necessarily linear in ANGLE, and a rectangle's perimeter is not
+   * equidistant from its centre — a linear angle crawls the edge midpoints and
+   * accelerates through the corners. `useFrameLight.ts` drives the property
+   * through the Web Animations API on a curve derived from the frame's
+   * measured geometry instead. The paint is here; only the timing is there.
+   */
+  .app-frame::after {
+    content: "";
+    position: absolute;
+    /* Resolves against the PADDING box, so -1px lands exactly on the 1px
+       border — the ring sits ON the boundary rather than inside it. */
+    inset: -1px;
+    border-radius: inherit;
+    /* At exactly the border width the light sits *in* the boundary and reads
+       as the border changing colour; 2px reads as something travelling. */
+    padding: 2px;
+    background: conic-gradient(
+      from var(--border-angle),
+      transparent 0deg,
+      transparent 236deg,
+      color-mix(in oklab, var(--frame-a) 22%, transparent) 272deg,
+      color-mix(in oklab, var(--frame-a) 70%, transparent) 310deg,
+      color-mix(in oklab, var(--frame-b) 85%, transparent) 332deg,
+      color-mix(in oklab, var(--frame-b) 96%, transparent) 352deg,
+      transparent 360deg
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    /*
+     * THE BLOOM IS THE NEON. A saturated hairline is a coloured line; what
+     * reads as a tube is the light it throws onto what surrounds it. Two
+     * stacked shadows because one cannot be both — the tight pass gives the
+     * core its heat, the wide one the halo.
+     *
+     * `drop-shadow`, not `box-shadow`: it follows the element's ALPHA, which
+     * after the mask is the comet alone. `box-shadow` would trace the whole
+     * rectangle and light all four edges permanently.
+     */
+    filter:
+      drop-shadow(0 0 3px color-mix(in oklab, var(--frame-b) 60%, transparent))
+      drop-shadow(0 0 9px color-mix(in oklab, var(--frame-a) 30%, transparent));
+    pointer-events: none;
+  }
+
+  /*
+   * THE BREATHING VARIANT — same ring, different life.
+   *
+   * Instead of a comet travelling the border, the whole perimeter glows in
+   * place and alternates between the two chrome hues. The conic gradient is
+   * overridden with a flat colour, so the mask geometry — the part that makes
+   * the light hug the corners — is reused untouched, and the WAAPI driver
+   * stands down because the hook checks the mode.
+   *
+   * FOUR PHASES, NOT A CROSSFADE. One hue fading straight into the other
+   * passes through a blended midpoint that reads as a third, unnamed colour.
+   * Dipping to near-dark between them keeps each hue pure and gives the cycle
+   * its breath. 12s a lap, so it sits near the house rhythms without locking
+   * to them.
+   */
+  .app-frame.fx-breathe::after {
+    background: color-mix(in oklab, var(--frame-a) 70%, transparent);
+    animation: frame-breathe 12s ease-in-out infinite;
+  }
+
+  /*
+   * THE GLOW IS A SECOND ELEMENT, and it has to be. The ring is a 2px hairline
+   * shaped by a mask, which imposes two limits at once: `drop-shadow` blurs
+   * the hairline's own alpha, and 2px of source spread over a 26px blur is
+   * arithmetic that ends near zero — while `box-shadow` on the ring is clipped
+   * by the very mask that shapes it. So a halo the size a breathing frame
+   * needs cannot come from the ring at any setting.
+   *
+   * ::before is free now the hairline is deleted, so in breathe mode it
+   * becomes a pure glow layer: no fill, only box-shadows on the same rounded
+   * rect. Same 12s timeline, so core and glow breathe as one thing.
+   */
+  .app-frame.fx-breathe::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    pointer-events: none;
+    animation: frame-breathe-glow 12s ease-in-out infinite;
+  }
+
+  /* OFF — no light at all. The chassis is already plain in every mode, so this
+     only has to hide the effect ring. */
+  .app-frame.fx-off::after {
+    display: none;
+  }
+
+  @keyframes frame-breathe {
+    0%,
+    100% {
+      background: color-mix(in oklab, var(--frame-a) 70%, transparent);
+      filter:
+        drop-shadow(0 0 4px color-mix(in oklab, var(--frame-a) 80%, transparent))
+        drop-shadow(0 0 12px color-mix(in oklab, var(--frame-a) 45%, transparent))
+        drop-shadow(0 0 26px color-mix(in oklab, var(--frame-a) 22%, transparent));
+    }
+    25% {
+      background: color-mix(in oklab, var(--frame-a) 12%, transparent);
+      filter:
+        drop-shadow(0 0 3px color-mix(in oklab, var(--frame-a) 12%, transparent))
+        drop-shadow(0 0 8px color-mix(in oklab, var(--frame-a) 6%, transparent))
+        drop-shadow(0 0 16px color-mix(in oklab, var(--frame-a) 3%, transparent));
+    }
+    50% {
+      background: color-mix(in oklab, var(--frame-b) 70%, transparent);
+      filter:
+        drop-shadow(0 0 4px color-mix(in oklab, var(--frame-b) 80%, transparent))
+        drop-shadow(0 0 12px color-mix(in oklab, var(--frame-b) 45%, transparent))
+        drop-shadow(0 0 26px color-mix(in oklab, var(--frame-b) 22%, transparent));
+    }
+    75% {
+      background: color-mix(in oklab, var(--frame-b) 12%, transparent);
+      filter:
+        drop-shadow(0 0 3px color-mix(in oklab, var(--frame-b) 12%, transparent))
+        drop-shadow(0 0 8px color-mix(in oklab, var(--frame-b) 6%, transparent))
+        drop-shadow(0 0 16px color-mix(in oklab, var(--frame-b) 3%, transparent));
+    }
+  }
+
+  @keyframes frame-breathe-glow {
+    0%,
+    100% {
+      box-shadow:
+        0 0 16px 2px color-mix(in oklab, var(--frame-a) 55%, transparent),
+        0 0 48px 8px color-mix(in oklab, var(--frame-a) 26%, transparent),
+        inset 0 0 14px color-mix(in oklab, var(--frame-a) 16%, transparent);
+    }
+    25% {
+      box-shadow:
+        0 0 10px 1px color-mix(in oklab, var(--frame-a) 10%, transparent),
+        0 0 30px 4px color-mix(in oklab, var(--frame-a) 5%, transparent),
+        inset 0 0 10px color-mix(in oklab, var(--frame-a) 3%, transparent);
+    }
+    50% {
+      box-shadow:
+        0 0 16px 2px color-mix(in oklab, var(--frame-b) 55%, transparent),
+        0 0 48px 8px color-mix(in oklab, var(--frame-b) 26%, transparent),
+        inset 0 0 14px color-mix(in oklab, var(--frame-b) 16%, transparent);
+    }
+    75% {
+      box-shadow:
+        0 0 10px 1px color-mix(in oklab, var(--frame-b) 10%, transparent),
+        0 0 30px 4px color-mix(in oklab, var(--frame-b) 5%, transparent),
+        inset 0 0 10px color-mix(in oklab, var(--frame-b) 3%, transparent);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    /* Collapses to the final keyframe: a steady ring, lit but still. The comet
+       is a WAAPI animation that CSS cannot reach, so `useFrameLight` checks the
+       same query itself and declines to start. */
+    .app-frame.fx-breathe::after,
+    .app-frame.fx-breathe::before {
+      animation: none;
+    }
+  }
+
+  /*
+   * A MODULE, not a card.
+   *
+   * Cards float on a page grid with rounded corners and gaps; a terminal is
+   * the opposite claim — one chassis, many flush panes divided by rules, so
+   * the eye reads columns of feed rather than a scatter of objects. The header
+   * is mono, uppercase and tracked, and that typography IS the terminal
+   * character: the alive layer here is luminance, never texture or scanlines.
+   */
+  .module {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    background: var(--surface);
+    border: 1px solid var(--ring);
+    border-radius: 8px;
+    overflow: hidden;
+    /*
+     * NEVER COMPRESSED BY A SIBLING. The columns are scrolling flex containers,
+     * and a flex child's default `flex-shrink: 1` means a tall stack squeezes
+     * every panel instead of overflowing — which showed up as a Macro Board
+     * with its rows crushed together rather than a column you could scroll.
+     * The wire overrides this with `flex-1`, because it is the one panel that
+     * is supposed to absorb the leftover height.
+     */
+    flex-shrink: 0;
+  }
+
+  .module-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0 10px;
+    border-bottom: 1px solid color-mix(in oklab, var(--ring) 60%, transparent);
+    background: color-mix(in oklab, var(--surface-2) 40%, transparent);
+    padding: 6px 12px;
+  }
+
+  .module-title {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    line-height: 1;
+  }
+
+  /* Rows the cursor gets an answer from. */
+  .hit {
+    transition:
+      background-color 110ms ease,
+      color 110ms ease,
+      opacity 110ms ease;
+  }
+  .hit:hover {
+    background: color-mix(in oklab, var(--ink) 4%, transparent);
+  }
+
+  /*
+   * A FIGURE THAT JUST CHANGED.
+   *
+   * The only "alive" effect in the product, and it fires when the DATA moves
+   * rather than on a timer. A number that flashes once when a price ticks is
+   * information; a panel that pulses on a loop is wallpaper, and wallpaper is
+   * what you stop seeing.
+   *
+   * `filter`, not `text-shadow`: the figures carry `truncate`, which is
+   * `overflow: hidden`, which clips a text shadow to a hard-edged rectangle
+   * exactly the size of the number's box.
+   */
+  @keyframes tick-in {
+    0% {
+      filter: drop-shadow(0 0 0 transparent);
+    }
+    18% {
+      filter: drop-shadow(0 0 6px color-mix(in oklab, currentColor 85%, transparent));
+    }
+    100% {
+      filter: drop-shadow(0 0 0 transparent);
+    }
+  }
+
+  /*
+   * THE FLASH SCALES WITH THE TEXT, which is why every length is in `em`.
+   *
+   * GEXYGEN shipped these as fixed pixels tuned for its 20-25px rail figures
+   * and the owner reported them back: on the smaller card figures a 12px glow
+   * is WIDER THAN THE GLYPHS, so it blooms into a blob instead of haloing them,
+   * and a 3px chromatic split is a third of a character, so the glitch smears
+   * rather than separating. This terminal's figures run 9px to 15px in the same
+   * view, so there is no pixel value that would be right twice. In `em` the
+   * effect is the same proportion of the type at every size.
+   */
+  .tick {
+    --gl-blur: 0.55em;
+    --gl-split: calc(var(--gl-k, 0) * 0.07em);
+    --gl-shift: calc(var(--gl-k, 0) * 0.055em);
+    animation: tick-in 900ms ease-out;
+  }
+
+  /*
+   * The same tick with a hardware glitch on the front of it.
+   *
+   * ONE ANIMATION, NOT TWO. The obvious build layers a glitch over `tick-in`,
+   * and it does not work: both write `filter`, and the later one in the list
+   * wins outright for as long as it runs, so the glow would vanish for the
+   * glitch's duration and pop back. This set owns the whole 900ms instead —
+   * glitch through the first ~16%, then the identical decay `tick-in` performs.
+   *
+   * WHY NOT PSEUDO-ELEMENTS. The canonical CSS glitch clones the text into
+   * ::before/::after via `content: attr(...)` and offsets the copies. The
+   * figures here carry `truncate` — `overflow: hidden` — which clips the copies
+   * into two hard-edged rectangles instead of a split. `drop-shadow` is applied
+   * after clipping, so it escapes the box; that is the same reason `tick-in`
+   * uses a filter rather than a text-shadow.
+   *
+   * THE SPLIT IS IN THE TWO DATA HUES rather than the traditional red/cyan.
+   * Red/cyan is a CRT artefact quoting a CRT; these are the product's own call
+   * and put hues, shared byte-for-byte with GEXYGEN, so the effect reads as the
+   * instrument's own. Both are always present, so whichever hue the figure
+   * itself carries, the other is still visible against it.
+   *
+   * `steps(1, end)` is load-bearing. A glitch is discrete — signal is either
+   * corrupt or it is not — and interpolating the offsets produces a smooth
+   * wobble that reads as a wet animation rather than a fault. Only the decay
+   * eases.
+   *
+   * `clip-path: none`, NEVER `inset(0)`. A zero inset is not "no clip", it is a
+   * clip to exactly the border box, applied AFTER `filter` — so it shears the
+   * drop-shadow off flush with the text and leaves a hard-edged rectangle
+   * around the figure for the rest of the animation. That shipped in GEXYGEN
+   * and was reported.
+   */
+  @keyframes tick-glitch {
+    0% {
+      filter: drop-shadow(0 0 0 transparent);
+      transform: translateX(0);
+      clip-path: none;
+      animation-timing-function: steps(1, end);
+    }
+    3% {
+      filter: drop-shadow(calc(-1 * var(--gl-split)) 0 var(--put))
+        drop-shadow(var(--gl-split) 0 var(--call));
+      transform: translateX(calc(-1 * var(--gl-shift)));
+      clip-path: inset(16% 0 44% 0);
+      animation-timing-function: steps(1, end);
+    }
+    6% {
+      filter: drop-shadow(var(--gl-split) 0 var(--put))
+        drop-shadow(calc(-1 * var(--gl-split)) 0 var(--call));
+      transform: translateX(var(--gl-shift));
+      clip-path: inset(58% 0 8% 0);
+      animation-timing-function: steps(1, end);
+    }
+    9% {
+      filter: drop-shadow(calc(-0.6 * var(--gl-split)) 0 var(--call))
+        drop-shadow(calc(0.6 * var(--gl-split)) 0 var(--put));
+      transform: translateX(calc(0.4 * var(--gl-shift)));
+      clip-path: inset(34% 0 30% 0);
+      animation-timing-function: steps(1, end);
+    }
+    12% {
+      filter: drop-shadow(0 0 6px color-mix(in oklab, currentColor 70%, transparent));
+      transform: translateX(0);
+      clip-path: none;
+      animation-timing-function: ease-out;
+    }
+    /* From here it is `tick-in`, unchanged — the flash the data move earns. */
+    18% {
+      filter: drop-shadow(0 0 var(--gl-blur) color-mix(in oklab, currentColor 85%, transparent));
+    }
+    100% {
+      filter: drop-shadow(0 0 0 transparent);
+    }
+  }
+
+  /*
+   * Intensity, as two lengths, graded rather than on/off because the useful
+   * range is narrow: below about 1px the split is invisible at this type size,
+   * and much above 3px a figure that ticks every 20 seconds becomes genuinely
+   * hard to read.
+   *
+   * SWITCHED BY AN ANCESTOR CLASS, not by a prop. "Off" then means the class is
+   * simply absent and `.tick` keeps `tick-in` byte-for-byte — the previous
+   * behaviour, not an approximation of it reconstructed from zeroed variables.
+   * It also keeps every panel unaware that the setting exists.
+   */
+  .fx-glitch-subtle {
+    --gl-k: 1;
+  }
+  .fx-glitch-full {
+    --gl-k: 2;
+  }
+  .fx-glitch-subtle .tick,
+  .fx-glitch-full .tick {
+    animation-name: tick-glitch;
+  }
+
+  /* A headline that has not been on screen before slides in rather than
+     appearing — on a tape that reorders itself, a silent insertion above the
+     line you are reading is how you lose your place. */
+  @keyframes wire-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .wire-in {
+    animation: wire-in 260ms ease-out;
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+
+  .live-dot {
+    animation: pulse-dot 2.4s ease-in-out infinite;
+  }
+
+  /*
+   * THE ALERT CRAWL — ported from GEXYGEN's WireTicker.
+   *
+   * The run is two copies of the tape back to back, translated by exactly half
+   * its own width and looped, so the seam is invisible. The DURATION is set
+   * inline by the component from the measured width, which is what keeps the
+   * PACE constant: a long tape takes longer, it does not go faster. Hovering
+   * pauses it so a line can be read or clicked.
+   *
+   * Under reduced motion it does not move at all — the track becomes a row that
+   * scrolls by hand, which is also the honest fallback rather than a crawl
+   * nobody asked to chase.
+   */
+  @keyframes wire-crawl {
+    from {
+      transform: translate3d(0, 0, 0);
+    }
+    to {
+      transform: translate3d(-50%, 0, 0);
+    }
+  }
+
+  .wire-run {
+    animation: wire-crawl 60s linear infinite;
+    will-change: transform;
+  }
+
+  .wire-track:hover .wire-run,
+  .wire-track:focus-within .wire-run {
+    animation-play-state: paused;
+  }
+
+  .wire-track {
+    /* Fade the edges so a line enters and leaves rather than popping. */
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      #000 24px,
+      #000 calc(100% - 24px),
+      transparent
+    );
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tick,
+    .wire-in,
+    .live-dot,
+    .o2-a,
+    .o2-b {
+      animation: none;
+    }
+    /* The wash is a hue drift with no geometry, but the glitch on the same
+       shorthand is a displacement, so the pair goes together. */
+    .wordmark {
+      animation: none;
+    }
+    .wire-run {
+      animation: none;
+    }
+    .wire-track {
+      overflow-x: auto;
+      mask-image: none;
+    }
+  }
+
+  /* The wordmark's two-tone wash. Chrome tokens only. */
+  /*
+   * THE LOCKUP MOVES: the mark breathes, the word washes, and once a minute the
+   * whole thing glitches. Ported from GEXYGEN so the two products read as one
+   * instrument; the arguments below are that file's, kept because they are the
+   * reason each number is what it is.
+   *
+   * THE WASH GEOMETRY, because it is the whole trick.
+   *
+   * Sliding a single teal-to-magenta ramp across the word is the obvious build
+   * and it is wrong: only part of the gradient covers the word at any instant,
+   * so most of the time you see teal-to-light-teal and never the full range.
+   * Sliding a ramp shows you a WINDOW onto the gradient, not the gradient.
+   *
+   * The fix is a PERIODIC gradient sized so one period is exactly one word
+   * width. At `background-size: 200%`, position 0% to 100% travels the image by
+   * exactly one element width, so an image containing two identical periods
+   * loops seamlessly - the pattern at 100% is pixel-identical to the pattern at
+   * 0%, which is what lets the timing be `linear` and `infinite` with no jump.
+   *
+   * Each period is a palindrome (call, put, call), so the full range is on the
+   * letterforms at every instant and the colour flows continuously through the
+   * word rather than nudging back and forth.
+   *
+   * THE MIDPOINT IS AN EXPLICIT HIGHLIGHT, not a blend. Interpolating straight
+   * from light teal to light pink in sRGB passes through a dull grey-blue, so a
+   * muddy band travelled across the word twice a cycle. Routing through a
+   * near-white stop keeps luminance high the whole way and reads as a sheen.
+   */
+  .wordmark {
+    background-image: linear-gradient(
+      100deg,
+      var(--title-a) 0%,
+      var(--title-a-lift) 6.25%,
+      var(--title-sheen) 12.5%,
+      var(--title-b-lift) 18.75%,
+      var(--title-b) 25%,
+      var(--title-b-lift) 31.25%,
+      var(--title-sheen) 37.5%,
+      var(--title-a-lift) 43.75%,
+      var(--title-a) 50%,
+      var(--title-a-lift) 56.25%,
+      var(--title-sheen) 62.5%,
+      var(--title-b-lift) 68.75%,
+      var(--title-b) 75%,
+      var(--title-b-lift) 81.25%,
+      var(--title-sheen) 87.5%,
+      var(--title-a-lift) 93.75%,
+      var(--title-a) 100%
+    );
+    background-size: 200% 100%;
+    background-position: 100% 0;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation:
+      wordmark-wash 5.6s linear infinite,
+      title-glitch 60s linear infinite;
+  }
+
+  /*
+   * 100% to 0%, which runs the colour LEFT TO RIGHT.
+   *
+   * The direction is the opposite of the intuition. `background-position-x: 0%`
+   * aligns the image's left edge with the box's left edge; `100%` aligns the
+   * RIGHT edges, which means the image has been shifted left by one element
+   * width. So increasing the position slides the image leftward and the colour
+   * appears to travel right-to-left, like scrolling credits. Counting down
+   * moves the image right, and the colour with it.
+   */
+  @keyframes wordmark-wash {
+    from {
+      background-position: 100% 0;
+    }
+    to {
+      background-position: 0% 0;
+    }
+  }
+
+  /*
+   * THE WORDMARK GLITCHES ON A CLOCK, which makes it a different animal from
+   * the figure glitch above. That one fires when the data moves, which is the
+   * whole argument for it existing. This one is decoration on a timer, and the
+   * only thing keeping it from becoming wallpaper is how rarely it happens.
+   *
+   * NO JAVASCRIPT TIMER. The obvious build is a setInterval that adds a class
+   * for half a second, which means a timer per mount and a cleanup to get
+   * wrong. Instead the burst occupies the first 1% of a very long infinite
+   * animation: at 60s that is a 600ms glitch once a minute, and the browser
+   * owns the clock.
+   *
+   * `clip-path: none` at the rest keyframes, never `inset(0)`. A zero inset is
+   * a clip to exactly the border box applied after `filter`, and the word is
+   * `background-clip: text` - it would square off the letterforms' own gradient
+   * for the other 99% of the cycle. Same defect as the one written up on
+   * `tick-glitch`, reached through a different property.
+   *
+   * TWO ANIMATIONS ON ONE ELEMENT, and they do not fight: `wordmark-wash` owns
+   * `background-position` and this owns transform, filter and clip-path.
+   */
+  @keyframes title-glitch {
+    0% {
+      transform: translateX(0);
+      clip-path: none;
+      filter: none;
+      animation-timing-function: steps(1, end);
+    }
+    0.25% {
+      transform: translateX(-2px);
+      clip-path: inset(14% 0 52% 0);
+      filter: drop-shadow(2px 0 var(--title-b)) drop-shadow(-2px 0 var(--title-a));
+      animation-timing-function: steps(1, end);
+    }
+    0.5% {
+      transform: translateX(2.5px);
+      clip-path: inset(56% 0 10% 0);
+      filter: drop-shadow(-3px 0 var(--title-b)) drop-shadow(3px 0 var(--title-a));
+      animation-timing-function: steps(1, end);
+    }
+    0.75% {
+      transform: translateX(-1px);
+      clip-path: inset(36% 0 34% 0);
+      filter: drop-shadow(1px 0 var(--title-a));
+      animation-timing-function: steps(1, end);
+    }
+    1% {
+      transform: translateX(0);
+      clip-path: none;
+      filter: none;
+      animation-timing-function: steps(1, end);
+    }
+    100% {
+      transform: translateX(0);
+      clip-path: none;
+      filter: none;
+    }
+  }
+
+  /*
+   * The mark breathes, as a BOND STRETCH rather than a scale pulse: the two
+   * rings drift apart along the axis between them and back. Same idea, but it
+   * is the movement a diatomic molecule actually makes, and two rings easing
+   * apart reads as breathing in a way two rings growing does not.
+   *
+   * UNITS ARE THE TRAP. A CSS transform on an SVG element resolves in the
+   * element's own USER UNITS, not CSS pixels. GEXYGEN draws a 32-unit viewBox
+   * at 25px, so one unit is 0.78 real pixels and it translates 1.55 units to
+   * travel ~1.2 real px. THIS header draws the same viewBox at 18px, where one
+   * unit is only 0.5625 real pixels - reusing 1.55 would move the rings seven
+   * tenths of a pixel, which is as invisible as it sounds. 2.15 units is what
+   * buys the same ~1.2 real px at this size.
+   *
+   * Three channels, because motion alone is weak at 18px and luminance is not:
+   * the bond stretches, the rings swell, and the glow brightens on the inhale.
+   *
+   * 5.6s per cycle, and the wash runs on the SAME period deliberately - the
+   * mark and the word are one lockup, and two animations on different periods
+   * would drift in and out of phase and read as two things that happen to sit
+   * next to each other.
+   *
+   * 0% and 100% are both the resting pose, which matters: the reduced-motion
+   * rule collapses the duration and lands on the final keyframe, so the mark
+   * must be at rest there rather than frozen mid-inhale.
+   *
+   * `transform-box: fill-box` is load-bearing. Without it an SVG element's
+   * transform-origin resolves against the whole viewBox rather than the shape,
+   * which is harmless for a pure translate but breaks the moment a scale is
+   * added - and there is one.
+   */
+  @keyframes o2-stretch-a {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+      stroke-width: 2.8;
+      filter: drop-shadow(0 0 1px color-mix(in oklab, var(--icon-a) 35%, transparent));
+    }
+    50% {
+      transform: translate(-2.15px, 1.95px) scale(1.05);
+      stroke-width: 3.15;
+      filter: drop-shadow(0 0 4px color-mix(in oklab, var(--icon-a) 85%, transparent));
+    }
+  }
+  @keyframes o2-stretch-b {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+      stroke-width: 2.8;
+      filter: drop-shadow(0 0 1px color-mix(in oklab, var(--icon-b) 35%, transparent));
+    }
+    50% {
+      transform: translate(2.15px, -1.95px) scale(1.06);
+      stroke-width: 3.15;
+      filter: drop-shadow(0 0 4px color-mix(in oklab, var(--icon-b) 85%, transparent));
+    }
+  }
+  .o2-a {
+    animation: o2-stretch-a 5.6s ease-in-out infinite;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  .o2-b {
+    animation: o2-stretch-b 5.6s ease-in-out infinite;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+}
+
+@layer utilities {
+  /* Direction, as one class. Used on every change column in the product, so
+     that "green is up" is defined in exactly one place. */
+  .up {
+    color: var(--call);
+  }
+  .down {
+    color: var(--put);
+  }
+  .flat {
+    color: var(--ink-3);
+  }
+
+  .rule {
+    border-color: color-mix(in oklab, var(--ring) 70%, transparent);
+  }
+}

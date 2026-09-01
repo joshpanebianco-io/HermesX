@@ -1,0 +1,134 @@
+"use client";
+
+import { useMemo } from "react";
+import type { EarningsRow } from "@/types/terminal";
+import { Module } from "@/components/ui/Module";
+import { compact } from "@/lib/format";
+import { cn } from "@/lib/cn";
+
+/**
+ * Earnings — the reports that move an index rather than a stock.
+ *
+ * WHY AN INDEX-FUTURES TERMINAL CARRIES THIS. The Nasdaq 100 is cap-weighted
+ * and its top handful of names are roughly a third of it, so NVDA or AVGO after
+ * the close moves NQ harder than most macro prints move it in a week. A session
+ * note written without knowing who reports tonight is missing the largest
+ * scheduled risk in it.
+ *
+ * BEFORE OR AFTER THE BELL IS THE COLUMN THAT MATTERS, so it leads each row
+ * rather than hiding in a tooltip: an after-hours report is tomorrow's gap and a
+ * pre-market one is this morning's, and they are different trades.
+ *
+ * FILTERED BY SIZE UPSTREAM, not here — the collector drops anything under
+ * $50bn that is not a bellwether, so this panel renders five or ten names a day
+ * instead of three hundred.
+ */
+export function Earnings({
+  rows,
+  today,
+  ageMin,
+  error,
+}: {
+  rows: EarningsRow[];
+  /**
+   * The ET calendar date, from the collector.
+   *
+   * NOT `new Date()`. Computing it here ran on the server in UTC and in the
+   * browser in local time, so "Today" and "Tomorrow" could disagree between the
+   * two renders — a hydration mismatch that React reports and then repairs by
+   * throwing the server's markup away. The collector already knows the ET date
+   * and it is the same string on both sides.
+   */
+  today: string;
+  ageMin?: number | null;
+  error?: string | null;
+}) {
+  const byDay = useMemo(() => {
+    const m = new Map<string, EarningsRow[]>();
+    for (const r of rows) {
+      const a = m.get(r.date);
+      if (a) a.push(r);
+      else m.set(r.date, [r]);
+    }
+    return [...m.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [rows]);
+
+  return (
+    <Module
+      title="Earnings"
+      sub={`${rows.length} large caps`}
+      ageMin={ageMin}
+      error={error}
+      bodyClassName="px-0 py-0"
+    >
+      {rows.length === 0 ? (
+        <p className="px-3 py-5 text-center text-[11px] text-ink-4">
+          Nothing big enough to move an index in the next few sessions.
+        </p>
+      ) : (
+        byDay.map(([date, list]) => (
+          <div key={date}>
+            <div className="flex items-center gap-2 border-y border-ring/40 bg-surface-2/50 px-3 py-1 first:border-t-0">
+              <span className="eyebrow text-[9px]">{label(date, today)}</span>
+              <span className="fig text-[9px] text-ink-4">{list.length}</span>
+            </div>
+            <ul>
+              {list.map((r) => (
+                <li key={`${r.date}-${r.symbol}`} className="hit flex items-baseline gap-2 px-3 py-[3px]">
+                  <span
+                    className={cn(
+                      "fig w-[34px] shrink-0 rounded-sm px-1 text-center text-[9px] leading-[14px]",
+                      r.when === "after"
+                        ? "bg-put/20 text-put"
+                        : r.when === "pre"
+                          ? "bg-call/20 text-call"
+                          : "text-ink-4",
+                    )}
+                    title={
+                      r.when === "after"
+                        ? "After the close — tomorrow's gap"
+                        : r.when === "pre"
+                          ? "Before the open — this morning's gap"
+                          : "Time not specified"
+                    }
+                  >
+                    {r.when === "after" ? "AMC" : r.when === "pre" ? "BMO" : "—"}
+                  </span>
+                  <span
+                    className={cn(
+                      "fig w-[48px] shrink-0 text-[11px]",
+                      r.bellwether ? "text-ink" : "text-ink-2",
+                    )}
+                  >
+                    {r.symbol}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[10.5px] text-ink-4">{r.name}</span>
+                  <span className="fig w-[46px] shrink-0 text-right text-[10px] text-ink-3">
+                    {r.eps_actual ?? r.eps_forecast ?? "—"}
+                  </span>
+                  <span
+                    className="fig hidden w-[44px] shrink-0 text-right text-[9.5px] text-ink-4 sm:block"
+                    title="Market capitalisation"
+                  >
+                    {r.market_cap ? compact(r.market_cap) : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))
+      )}
+    </Module>
+  );
+}
+
+/** "Today", "Tomorrow", else "Wed 2 Sep". */
+function label(date: string, today: string): string {
+  if (date === today) return "Today";
+  const d = new Date(`${date}T12:00:00Z`);
+  const t = new Date(`${today}T12:00:00Z`);
+  const days = Math.round((d.getTime() - t.getTime()) / 86_400_000);
+  if (days === 1) return "Tomorrow";
+  if (days === -1) return "Yesterday";
+  return d.toLocaleDateString("en-US", { weekday: "short", day: "numeric", month: "short" });
+}

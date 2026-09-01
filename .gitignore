@@ -1,0 +1,23 @@
+node_modules/
+.next/
+out/
+build/
+next-env.d.ts
+*.tsbuildinfo
+.env*
+!.env.example
+.DS_Store
+
+# Python service
+server/.venv/
+__pycache__/
+*.py[cod]
+
+# Cached upstream bodies — RSS, calendar JSON, Treasury CSV. All regenerated
+# on demand and none of it ours.
+server/cache/
+
+.claude/settings.local.json
+
+# Editor/tool droppings
+*.tmp
