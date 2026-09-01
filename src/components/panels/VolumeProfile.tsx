@@ -126,7 +126,9 @@ function Row({
   return (
     <li
       className="hit flex items-baseline gap-2 px-3 py-[4px]"
-      title={`${r.label} · ${r.date} ${r.start_et}-${r.end_et} · range ${num(r.low)}-${num(r.high)} · ${r.bars} bars, bin ${r.bin}`}
+      title={`${r.label} · ${r.date} ${r.start_et}-${r.end_et}
+Track: this window's full range, ${num(r.low)}-${num(r.high)}. Shaded band: the value area (VAL-VAH), where 70% of volume traded. Amber tick: POC, the price with the most volume. White marker: live price (developing window only).
+${r.bars} bars · bin ${r.bin}`}
     >
       <span
         className={cn(
@@ -139,6 +141,7 @@ function Row({
       <span className="relative h-[9px] min-w-0 flex-1 self-center rounded-sm bg-ring/40">
         {/* The 70% value area. */}
         <span
+          title="Value area: VAL to VAH, where 70% of this window's volume traded"
           className="absolute inset-y-0 rounded-sm"
           style={{
             left: `${pos(r.val)}%`,
@@ -148,6 +151,7 @@ function Row({
         />
         {/* The POC: the magnet, bright. */}
         <span
+          title="POC: the price with the most traded volume"
           className="absolute top-1/2 h-[13px] w-[2px] -translate-y-1/2 rounded-full"
           style={{ left: `calc(${pos(r.poc)}% - 1px)`, background: "var(--flip)" }}
         />
