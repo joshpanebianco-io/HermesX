@@ -185,17 +185,26 @@ function Mark() {
           />
         </linearGradient>
       </defs>
-      {/* FLIPPED BY OWNER'S CALL (2026-09-01), seen both ways in the app:
-          the wing now leads on the right. The mirror is a transform on the
-          one canonical path, not a second trace. */}
-      <path
-        className="hermes-mark"
-        fill="url(#hermes-grad)"
-        stroke="url(#hermes-grad)"
-        strokeWidth={8}
-        transform="translate(512 0) scale(-1 1)"
-        d={HERMES_MARK_D}
-      />
+      {/*
+        * FLIPPED BY OWNER'S CALL (2026-09-01) — and the mirror lives on THIS
+        * WRAPPER GROUP, not on the animated path, after it silently came
+        * undone once: the glitch animates the CSS `transform` property, and a
+        * CSS transform OVERRIDES the SVG transform attribute outright for as
+        * long as the animation exists — which is always, for an infinite one.
+        * The flip shipped in the attribute, the glitch shipped an hour later,
+        * and the helm quietly turned back around ("bro you flipped it back").
+        * On a parent group the CSS on the path composes with the mirror
+        * instead of replacing it.
+        */}
+      <g transform="translate(512 0) scale(-1 1)">
+        <path
+          className="hermes-mark"
+          fill="url(#hermes-grad)"
+          stroke="url(#hermes-grad)"
+          strokeWidth={8}
+          d={HERMES_MARK_D}
+        />
+      </g>
     </svg>
   );
 }
