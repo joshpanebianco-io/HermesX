@@ -314,6 +314,24 @@ export interface PolicyMeetings {
   anchor_src: string | null;
 }
 
+export interface AuctionEvent {
+  /** "10Y", "30Y" — a reopening already renamed to what the market calls it. */
+  term: string;
+  label: string;
+  security: string;
+  date: string;
+  /** The standard 13:00 ET competitive close — a display hint, not feed data. */
+  et: string;
+  utc: string;
+  ts: number;
+  in_days: number;
+  /** Empty until the weekly announcement; never guessed. */
+  amount_bn: number | null;
+  reopening: boolean;
+  /** The long end: the auctions that reprice equities when they tail. */
+  major: boolean;
+}
+
 export interface FedEvent {
   kind: "FOMC" | "Speech" | "Testimony" | "Beige Book" | "Conference";
   title: string;
@@ -346,6 +364,7 @@ export interface Terminal {
   ranges: { assets: Record<string, { last: number | null; sessions: SessionRange[] }> };
   constituents: { indices: Record<string, IndexMovers> };
   fed: FedEvent[];
+  auctions: AuctionEvent[];
   volterm: VolTerm;
   policy_meetings: PolicyMeetings;
   earnings: EarningsRow[];

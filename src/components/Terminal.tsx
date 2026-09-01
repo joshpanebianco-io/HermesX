@@ -311,9 +311,22 @@ export function Terminal({
             />
             <Fed
               rows={data.fed ?? []}
+              auctions={data.auctions ?? []}
               today={data.expiry?.today ?? ""}
-              ageMin={ages.fed}
-              error={st.fed?.ok === false ? st.fed.error : null}
+              ageMin={
+                ages.fed == null
+                  ? ages.auctions
+                  : ages.auctions == null
+                    ? ages.fed
+                    : Math.max(ages.fed, ages.auctions)
+              }
+              error={
+                st.fed?.ok === false
+                  ? st.fed.error
+                  : st.auctions?.ok === false
+                    ? st.auctions.error
+                    : null
+              }
             />
             <Earnings
               rows={data.earnings ?? []}

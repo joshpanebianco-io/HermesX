@@ -487,6 +487,19 @@ def build_digest(
         # tenor overtaking the far one is the stressed one, and that crossover
         # usually leads the index rather than following it.
         "vol_term_structure": snap.get("volterm") or {},
+        # Coupon supply. A tailed 10s or 30s auction reprices the long end at
+        # 13:01 ET, and the longest-duration equity index moves with it.
+        "treasury_supply_ahead": [
+            {
+                "date": a.get("date"),
+                "closes_et": a.get("et"),
+                "tenor": a.get("label"),
+                "amount_bn": a.get("amount_bn"),
+                "reopening": a.get("reopening"),
+                "in_days": a.get("in_days"),
+            }
+            for a in (snap.get("auctions") or [])[:6]
+        ],
         # Scheduled Fed risk. The headlines block carries what has been said;
         # this is what is about to be.
         "fed_ahead": [

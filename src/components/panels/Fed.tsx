@@ -1,6 +1,6 @@
 "use client";
 
-import type { FedEvent } from "@/types/terminal";
+import type { AuctionEvent, FedEvent } from "@/types/terminal";
 import { Module } from "@/components/ui/Module";
 import { cn } from "@/lib/cn";
 
@@ -20,6 +20,13 @@ import { cn } from "@/lib/cn";
  * THE FOMC IS NOT A SPEECH AND IS NOT DRAWN LIKE ONE. A decision and a press
  * conference stop the tape; a governor at a research conference does not. The
  * amber rail is for the ones that reprice the front of the curve.
+ *
+ * TREASURY SUPPLY LIVES IN THE SAME DIARY, because it is the same question —
+ * scheduled US rates risk — asked of the other end of the curve. The Fed rows
+ * reprice the front; a tailed 10s or 30s auction repricing the long end at
+ * 13:01 ET is an equity event for the longest-duration index on the board.
+ * One panel, one chronology, rather than two lists the reader has to merge in
+ * their head.
  */
 
 const KIND_HUE: Record<string, string> = {
@@ -28,41 +35,84 @@ const KIND_HUE: Record<string, string> = {
   Testimony: "var(--desk-policy)",
   Speech: "var(--desk-macro)",
   Conference: "var(--ink-4)",
+  Auction: "var(--em)",
 };
+
+/** The two feeds folded into one chronology. */
+interface DiaryRow {
+  date: string;
+  et: string | null;
+  text: string;
+  kind: string;
+  tag: string;
+  major: boolean;
+  tip?: string;
+}
+
+function toRows(fed: FedEvent[], auctions: AuctionEvent[]): DiaryRow[] {
+  const a: DiaryRow[] = fed.map((r) => ({
+    date: r.date,
+    et: r.et,
+    // The feed titles every speech "Speech - Governor X", which is the kind
+    // badge repeated in the text.
+    text: r.title.replace(/^(?:Speech|Discussion|Testimony)\s*[-–]\s*/i, ""),
+    kind: r.kind,
+    tag: r.kind === "Beige Book" ? "Beige" : r.kind,
+    major: r.major,
+    tip: r.note ?? undefined,
+  }));
+  const b: DiaryRow[] = auctions.map((r) => ({
+    date: r.date,
+    et: r.et,
+    text: `${r.label} auction${r.amount_bn != null ? ` · $${r.amount_bn}bn` : ""}${
+      r.reopening ? " · reopening" : ""
+    }`,
+    kind: "Auction",
+    tag: "Auct",
+    major: r.major,
+    tip: "Coupon supply. Competitive bids close 13:00 ET; the result a minute later reprices the long end.",
+  }));
+  return [...a, ...b].sort(
+    (x, y) => x.date.localeCompare(y.date) || (x.et ?? "99:99").localeCompare(y.et ?? "99:99"),
+  );
+}
 
 export function Fed({
   rows,
+  auctions,
   today,
   ageMin,
   error,
 }: {
   rows: FedEvent[];
+  auctions: AuctionEvent[];
   /** The ET date, from the collector — never `new Date()`; see Earnings. */
   today: string;
   ageMin?: number | null;
   error?: string | null;
 }) {
+  const diary = toRows(rows, auctions);
   return (
     <Module
-      title="Fed diary"
-      sub={rows.length ? `next ${rows.length}` : undefined}
+      title="Fed & Treasury"
+      sub={diary.length ? `next ${diary.length}` : undefined}
       ageMin={ageMin}
       error={error}
       bodyClassName="px-0 py-0"
     >
-      {rows.length === 0 ? (
+      {diary.length === 0 ? (
         <p className="px-3 py-5 text-center text-[11px] text-ink-4">
           Nothing scheduled in the next three weeks.
         </p>
       ) : (
         <ul>
-          {rows.map((r, i) => {
+          {diary.map((r, i) => {
             const hue = KIND_HUE[r.kind] ?? "var(--ink-4)";
             return (
               <li
                 key={`${r.date}-${r.kind}-${i}`}
                 className="hit relative flex items-baseline gap-2 py-[3px] pr-3 pl-3.5"
-                title={r.note ?? undefined}
+                title={r.tip}
               >
                 <span
                   aria-hidden
@@ -81,15 +131,13 @@ export function Fed({
                     r.major ? "text-ink-2" : "text-ink-3",
                   )}
                 >
-                  {/* The feed titles every speech "Speech - Governor X", which
-                      is the kind badge repeated in the text. */}
-                  {r.title.replace(/^(?:Speech|Discussion|Testimony)\s*[-–]\s*/i, "")}
+                  {r.text}
                 </span>
                 <span
                   className="fig hidden shrink-0 text-[9px] uppercase sm:block"
                   style={{ color: hue }}
                 >
-                  {r.kind === "Beige Book" ? "Beige" : r.kind}
+                  {r.tag}
                 </span>
               </li>
             );

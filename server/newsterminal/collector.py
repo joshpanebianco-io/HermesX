@@ -33,6 +33,7 @@ from .expiry import state as expiry_state
 from .http import SourceStatus
 from .policy import meetings_priced
 from .sessions import session_state
+from .sources import auctions as auc_src
 from .sources import calendar as cal_src
 from .sources import constituents as cons_src
 from .sources import earnings as earn_src
@@ -68,6 +69,7 @@ class Collector:
             "rates": {}, "ranges": {"assets": {}}, "constituents": {"indices": {}},
             "fed": [],
             "fomc": [],
+            "auctions": [],
             "gex": {"assets": {}, "enabled": bool(config.GEXYGEN_API)},
         }
         self._status: dict[str, SourceStatus] = {}
@@ -95,6 +97,9 @@ class Collector:
             "constituents": (self._do_constituents, 90.0, now + 3.2),
             # The Board publishes weeks ahead and amends rarely.
             "fed": (self._do_fed, 3600.0, now + 3.6),
+            # Six-hour cadence: the auction schedule is set weeks ahead and
+            # amends almost never.
+            "auctions": (self._do_auctions, 6 * 3600.0, now + 5.0),
         }
 
     # ---------------------------------------------------------------- jobs
@@ -163,6 +168,10 @@ class Collector:
         if st.ok:
             with self._lock:
                 self._state["fomc"] = fomc
+
+    def _do_auctions(self) -> None:
+        rows, st = auc_src.collect()
+        self._commit("auctions", rows if st.ok else None, st)
 
     def _do_gex(self) -> None:
         data, st = gex_src.collect()
