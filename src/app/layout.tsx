@@ -21,11 +21,14 @@ function icon(): string {
     // only way to make it BIGGER is to stop paying margins inside the tile
     // (was 80% with a border of dead space). Stroke up a step for the same
     // reason — presence at sixteen pixels.
+    // tx 550, MEASURED: at 538 the rendered ink sat 5px from the left of a
+    // 256 tile and 15px from the right (the owner saw it unprompted). 550
+    // balances the gaps 10/9.
     // Another size step (owner): the trace carries a 22-unit internal margin
     // inside its 512 box, so growing past scale 1.0 is what actually cancels
     // it — 1.06 fills the tile edge to edge without the rotated wing tips
     // clipping. Tilt matches the header: rotate leftmost = screen space.
-    `<path fill="#000" stroke="#000" stroke-width="20" transform="rotate(-10 256 256) translate(538 -26) scale(-1.1 1.1)" d="${HERMES_MARK_D}"/></svg>`
+    `<path fill="#000" stroke="#000" stroke-width="20" transform="rotate(-10 256 256) translate(550 -26) scale(-1.1 1.1)" d="${HERMES_MARK_D}"/></svg>`
   );
 }
 
