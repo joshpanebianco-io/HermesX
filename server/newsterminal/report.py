@@ -236,7 +236,7 @@ BOOK_KEYS: dict[str, tuple[str, ...]] = {
 
 ASSETS: dict[str, dict[str, str]] = {
     "all": {
-        "label": "All three books",
+        "label": "NQ · ES · GC",
         "instruments": "NQ/QQQ, ES/SPY and GC/GLD",
         "drivers": (
             "Cover all three. Say where they agree and, more usefully, where they do not — "

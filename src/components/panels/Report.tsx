@@ -215,7 +215,7 @@ export function Report({
                   >
                     <div className="flex w-full items-baseline gap-2">
                       <span className="fig text-[10px] text-ink-3">{h.et_label}</span>
-                      {h.asset_label && h.asset_label !== "All three books" && (
+                      {h.asset_label && h.asset !== "all" && h.asset_label !== "All three books" && (
                         <span className="fig rounded bg-ink/10 px-1 text-[9px] text-ink-3">
                           {h.asset_label}
                         </span>
@@ -363,18 +363,26 @@ function Body({
           <Conviction n={r.conviction} hue={hue} />
         </div>
 
-        <div className="mt-2 mb-2.5 flex items-center gap-1">
-          {BIAS_ORDER.map((b, i) => (
-            <span
-              key={b}
-              className="h-[3px] flex-1 rounded-full"
-              style={{
-                background: i === idx ? hue : "var(--ring)",
-                opacity: i === idx ? 1 : 1,
-              }}
-              title={b}
-            />
-          ))}
+        <div
+          className="mt-2 mb-2.5 flex items-center gap-1.5"
+          title={`The five-step bias spectrum — this note sits at "${r.bias}". The dots above are conviction: how strongly the data supports it.`}
+        >
+          <span className="fig text-[8.5px] uppercase" style={{ color: "var(--put)" }}>
+            bear
+          </span>
+          <div className="flex flex-1 items-center gap-1">
+            {BIAS_ORDER.map((b, i) => (
+              <span
+                key={b}
+                className="h-[3px] flex-1 rounded-full"
+                style={{ background: i === idx ? hue : "var(--ring)" }}
+                title={b}
+              />
+            ))}
+          </div>
+          <span className="fig text-[8.5px] uppercase" style={{ color: "var(--call)" }}>
+            bull
+          </span>
         </div>
 
         <p className="text-[13px] leading-snug text-ink">{r.headline}</p>
@@ -504,7 +512,7 @@ function Conviction({ n, hue }: { n: number; hue: string }) {
           style={{ background: i <= n ? hue : "var(--ring)" }}
         />
       ))}
-      <span className="fig ml-1 text-[10px] text-ink-4">{n}/5</span>
+      <span className="fig ml-1 text-[10px] text-ink-4">{n}/5 conviction</span>
     </span>
   );
 }
