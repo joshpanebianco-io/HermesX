@@ -53,7 +53,11 @@ export function Gamma({
   return (
     <Module
       title="Gamma levels"
-      sub={active?.book ? `book ${active.book}` : undefined}
+      // "0DTE", not "book front": the served window is the front expiry
+      // alone (engine: "whatever its DTE"), which is today's expiry during
+      // the NY session and the next session's overnight — 0DTE in the sense
+      // a trader means it. "front" is engine vocabulary nobody trades.
+      sub={active?.book ? (active.book === "front" ? "0DTE" : `book ${active.book}`) : undefined}
       ageMin={ageMin}
       error={error}
       bodyClassName="px-0 py-0"
