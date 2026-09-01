@@ -23,14 +23,6 @@ import { cn } from "@/lib/cn";
  * coloured pill would lose the distance between it and "bearish".
  */
 
-const BIAS_ORDER: Bias[] = [
-  "bearish",
-  "leaning bearish",
-  "neutral",
-  "leaning bullish",
-  "bullish",
-];
-
 function biasHue(b: Bias): string {
   if (b === "bullish") return "var(--call)";
   if (b === "leaning bullish") return "var(--call-dte)";
@@ -350,7 +342,6 @@ function Body({
 }) {
   const r = rep.report!;
   const hue = biasHue(r.bias);
-  const idx = BIAS_ORDER.indexOf(r.bias);
 
   return (
     <div>
@@ -361,62 +352,33 @@ function Body({
             {r.bias}
           </span>
           <span
-            className="fig text-[10px] text-ink-4"
+            className="flex items-center gap-[3px]"
             title="Conviction 1-5 — how strongly the data supports the call. The model's own confidence, not a probability."
           >
-            {r.conviction}/5 conviction
+            {[1, 2, 3, 4, 5].map((i) => (
+              <span
+                key={i}
+                className="h-[7px] w-[7px] rounded-full"
+                style={{ background: i <= r.conviction ? hue : "var(--ring)" }}
+              />
+            ))}
+            <span className="fig ml-1 text-[10px] text-ink-4">
+              {r.conviction}/5 conviction
+            </span>
           </span>
         </div>
 
         {/*
-         * THE CALL AS ONE GLYPH, in the grammar Index Movers already taught
-         * this screen: a bar diverging from a centre line. Side is direction,
-         * length is conviction, hue is the bias shade (the leaning variants
-         * keep their lighter hues). This replaced a conviction meter and a
-         * bias spectrum stacked as two lookalike five-unit rows — "we have
-         * bearish then 3/5, so what do the bars mean?" was the review.
+         * NO DIRECTIONAL METER, ON PURPOSE — this line replaced two of them
+         * in one day. A five-step bias spectrum drew "what do the 5 bars
+         * mean?"; a centre-diverging conviction bar drew "why is only a
+         * section colored?". Both times the reader had already understood
+         * the WORD (direction, in its hue) and the DOTS (strength, in
+         * rating grammar) instantly. The meters were decoration explaining
+         * things that were not confusing, at the cost of becoming the
+         * confusing thing themselves. If a future hand feels this row needs
+         * a gauge, read those two quotes first.
          */}
-        <div
-          className="mt-2 mb-2.5 flex items-center gap-1.5"
-          title={`${r.bias}, conviction ${r.conviction} of 5 — the side is the call, the length is how strongly the data backs it.`}
-        >
-          <span className="fig text-[8.5px] uppercase" style={{ color: "var(--put)" }}>
-            bear
-          </span>
-          <div className="relative h-[7px] flex-1 rounded-full bg-ring/50">
-            <span
-              aria-hidden
-              className="absolute inset-y-[-2px] left-1/2 w-px -translate-x-1/2 bg-ink-3"
-            />
-            {idx === 2 ? (
-              // Neutral has no side to take: a centred block whose width is
-              // still the conviction, because "no edge" can be held weakly or
-              // firmly and the difference matters.
-              <span
-                className="absolute top-0 h-full rounded-full"
-                style={{
-                  left: `${50 - (r.conviction / 5) * 12}%`,
-                  width: `${(r.conviction / 5) * 24}%`,
-                  background: hue,
-                  opacity: 0.9,
-                }}
-              />
-            ) : (
-              <span
-                className="absolute top-0 h-full rounded-full"
-                style={{
-                  ...(idx < 2
-                    ? { right: "50%", width: `${(r.conviction / 5) * 50}%` }
-                    : { left: "50%", width: `${(r.conviction / 5) * 50}%` }),
-                  background: hue,
-                }}
-              />
-            )}
-          </div>
-          <span className="fig text-[8.5px] uppercase" style={{ color: "var(--call)" }}>
-            bull
-          </span>
-        </div>
 
         <p className="text-[13px] leading-snug text-ink">{r.headline}</p>
         <p className="mt-1 text-[11.5px] leading-relaxed text-ink-3">{r.summary}</p>
