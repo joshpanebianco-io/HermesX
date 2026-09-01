@@ -168,3 +168,52 @@ def test_assemble_labels_carry_kind(kind_key: str) -> None:
     rows = {r["key"]: r for r in assemble(stamps, highs, lows, vols, now)}
     assert kind_key in rows
     assert rows[kind_key]["kind"] == ("live" if kind_key == "dev" else "done")
+
+
+# --- shape and the value-position classifier ---------------------------------
+
+
+def test_shape_reads_where_the_volume_sits() -> None:
+    from newsterminal.profile import value_position
+
+    # Volume stacked in the top third: a P. Bottom third: a b.
+    top = [(109.0 + (i % 2) * 0.5, 108.5 + (i % 2) * 0.5, 100.0) for i in range(8)]
+    tail = [(100.0 + i, 99.5 + i, 5.0) for i in range(9)]
+    p = build(top + tail)
+    assert p is not None and p["shape"].startswith("P")
+    bottom = [(100.5 + (i % 2) * 0.5, 100.0 + (i % 2) * 0.5, 100.0) for i in range(8)]
+    tail_up = [(101.0 + i, 100.5 + i, 5.0) for i in range(9)]
+    b = build(bottom + tail_up)
+    assert b is not None and b["shape"].startswith("b")
+    # And the classifier itself, at the boundaries: the edge is inside.
+    assert value_position(101.0, 101.0, 99.0) == "inside_value"
+    assert value_position(99.0, 101.0, 99.0) == "inside_value"
+    assert value_position(101.1, 101.0, 99.0) == "above_value"
+    assert value_position(98.9, 101.0, 99.0) == "below_value"
+    assert value_position(None, 101.0, 99.0) is None
+
+
+def test_double_distribution_is_two_auctions() -> None:
+    node_a = [(100.5, 100.0, 100.0)] * 8
+    node_b = [(110.5, 110.0, 80.0)] * 8
+    thin_middle = [(105.5, 105.0, 2.0)] * 6
+    p = build(node_a + node_b + thin_middle)
+    assert p is not None
+    assert p["shape"] == "double distribution"
+    assert p["second_node"] is not None
+
+
+def test_assemble_captures_the_windows_opening_print() -> None:
+    now = at(2026, 8, 31, 21, 0)
+    start = at(2026, 8, 31, 18, 0)
+    stamps, highs, lows, vols, opens = [], [], [], [], []
+    t = start
+    for i in range(20):
+        stamps.append(int(t.timestamp()))
+        highs.append(100.5 + i * 0.01)
+        lows.append(99.5)
+        vols.append(10.0)
+        opens.append(100.25 if i == 0 else 100.0)
+        t = datetime.fromtimestamp(t.timestamp() + 300, ET)
+    rows = {r["key"]: r for r in assemble(stamps, highs, lows, vols, now, opens=opens)}
+    assert rows["dev"]["open"] == 100.25

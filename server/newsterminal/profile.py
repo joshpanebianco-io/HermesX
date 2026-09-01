@@ -125,8 +125,34 @@ def build(
 
     centre = lambda i: base + i * step + step / 2  # noqa: E731
 
+    # THE SHAPE, in market-profile vocabulary, from where the volume sits.
+    # POC in the upper third is a P (acceptance near the highs, the
+    # short-covering look); lower third is a b (acceptance low, the long-
+    # liquidation look); the middle is balance. A second node at least 40%
+    # of the POC's weight, separated by a valley under half the lesser
+    # peak, marks a double distribution — two auctions in one window, and
+    # the valley between them is the reference the day trades around.
+    poc_pos = (centre(poc_i) - lo) / max(hi - lo, 1e-9)
+    shape = "P (accepted high)" if poc_pos >= 0.66 else (
+        "b (accepted low)" if poc_pos <= 0.34 else "D (balanced)"
+    )
+    second_i = None
+    for i in range(nbins):
+        if i == poc_i or vol[i] < 0.4 * vol[poc_i]:
+            continue
+        a, b = sorted((i, poc_i))
+        valley = min(vol[a:b + 1]) if b > a else vol[a]
+        deep_valley = valley < 0.5 * min(vol[i], vol[poc_i])
+        if deep_valley and (second_i is None or vol[i] > vol[second_i]):
+            second_i = i
+    if second_i is not None:
+        shape = "double distribution"
+
     return {
         "poc": round(centre(poc_i), 4),
+        "poc_pos": round(poc_pos, 2),
+        "shape": shape,
+        "second_node": round(centre(second_i), 4) if second_i is not None else None,
         "vah": round(base + (hi_i + 1) * step, 4),
         "val": round(base + lo_i * step, 4),
         "low": round(lo, 4),
@@ -135,6 +161,24 @@ def build(
         "bin": step,
         "bars": len(bars),
     }
+
+
+def value_position(price: float | None, vah: float | None, val: float | None) -> str | None:
+    """Above value, inside value, or below value — the market-profile read.
+
+    One classifier used for BOTH facts the report states: where the session
+    OPENED relative to prior value, and where price trades NOW relative to
+    each reference window. Inside is val <= p <= vah inclusive, so a print
+    sitting exactly on the edge is "inside" — an auction touching its
+    boundary has not left it.
+    """
+    if price is None or vah is None or val is None:
+        return None
+    if price > vah:
+        return "above_value"
+    if price < val:
+        return "below_value"
+    return "inside_value"
 
 
 def prev_trading_day(d: datetime) -> datetime:
@@ -207,6 +251,7 @@ def assemble(
     lows: list[float | None],
     vols: list[float | None],
     now_et: datetime,
+    opens: list[float | None] | None = None,
 ) -> list[dict[str, Any]]:
     """Bars + the clock -> the profile rows the panel and digest show.
 
@@ -220,11 +265,16 @@ def assemble(
         tries = 0
         while True:
             s_ts, e_ts = start.timestamp(), end.timestamp()
-            picked = [
-                (highs[i], lows[i], vols[i] or 0.0)
-                for i in range(len(stamps))
-                if s_ts <= stamps[i] < e_ts
-            ]
+            idxs = [i for i in range(len(stamps)) if s_ts <= stamps[i] < e_ts]
+            picked = [(highs[i], lows[i], vols[i] or 0.0) for i in idxs]
+            # The window's OPENING PRINT — the fact "opened above/inside/
+            # below prior value" is judged from. First bar with an open.
+            w_open = None
+            if opens is not None:
+                for i in idxs:
+                    if opens[i] is not None:
+                        w_open = opens[i]
+                        break
             prof = build([(h, low, v) for h, low, v in picked if h is not None and low is not None])
             if prof is not None or w["key"] != "prev_rth" or tries >= 4:
                 break
@@ -241,6 +291,7 @@ def assemble(
             continue
         rows.append({
             **prof,
+            "open": round(w_open, 4) if w_open is not None else None,
             "key": w["key"],
             "label": w["label"],
             "kind": w["kind"],

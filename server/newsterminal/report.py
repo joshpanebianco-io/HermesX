@@ -42,6 +42,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .config import CACHE_DIR, UA
+from .profile import value_position
 
 ET = ZoneInfo("America/New_York")
 
@@ -300,6 +301,40 @@ def resolve_session(clock: dict[str, Any], want: str = "auto") -> str:
     return "ny"
 
 
+def _vp_reads(asset: dict[str, Any], session: str) -> dict[str, Any]:
+    """The open-vs-value and now-vs-value facts for one asset's profiles."""
+    rows = {r.get("key"): r for r in (asset.get("rows") or [])}
+    out: dict[str, Any] = {}
+    prev = rows.get("prev_rth")
+    dev = rows.get("dev")
+    last = asset.get("last")
+
+    if dev is not None and prev is not None and dev.get("open") is not None:
+        pos = value_position(dev["open"], prev.get("vah"), prev.get("val"))
+        if pos:
+            out["session_open"] = {
+                "price": dev["open"],
+                "anchored_et": dev.get("start_et"),
+                "vs_prev_rth_value": pos,
+            }
+
+    if last is not None:
+        now: dict[str, Any] = {"price": last}
+        for key, name in (
+            ("prev_rth", "vs_prev_rth_value"),
+            ("overnight", "vs_overnight_value"),
+        ):
+            r = rows.get(key)
+            if r is None or (key == "overnight" and session != "ny"):
+                continue
+            pos = value_position(last, r.get("vah"), r.get("val"))
+            if pos:
+                now[name] = pos
+        if len(now) > 1:
+            out["price_now"] = now
+    return out
+
+
 def build_digest(
     snap: dict[str, Any], session: str = "ny", asset: str = "all"
 ) -> dict[str, Any]:
@@ -490,26 +525,35 @@ def build_digest(
         # usually leads the index rather than following it.
         "vol_term_structure": snap.get("volterm") or {},
         # WHERE THE VOLUME TRADED, cut by session exactly as the owner trades
-        # it: every session reads the previous RTH profile; New York also
-        # reads the completed overnight; and the developing profile is
-        # anchored 18:00 ET for Asia/London, 09:30 for New York. POC is the
-        # magnet, VAH/VAL bound acceptance — read them against the gamma
-        # walls, where confluence is the actual signal. Approximate (5m
-        # bars), and the note should treat them as zones, not ticks.
-        "volume_profile_levels": {
-            name: [
-                {
-                    "window": r.get("label"),
-                    "span_et": (
-                        f"{r.get('start_et')}-{r.get('end_et')}"
-                    ),
-                    "poc": r.get("poc"),
-                    "vah": r.get("vah"),
-                    "val": r.get("val"),
-                }
-                for r in (v.get("rows") or [])
-                if r.get("key") != "overnight" or session == "ny"
-            ]
+        # it, WITH THE READS STATED AS FACTS rather than left for the model
+        # to derive: each window carries its shape (P/b/D/double) and the
+        # block names where the session OPENED and where price trades NOW
+        # relative to prior value. "Opened below prior VAL and is still
+        # below it" is a different day from "opened below and reclaimed" —
+        # the classifier decides, the model narrates. Approximate (5m bars):
+        # zones, not ticks.
+        "volume_profile": {
+            name: {
+                "windows": [
+                    {
+                        "window": r.get("label"),
+                        "span_et": f"{r.get('start_et')}-{r.get('end_et')}",
+                        "poc": r.get("poc"),
+                        "vah": r.get("vah"),
+                        "val": r.get("val"),
+                        "shape": r.get("shape"),
+                        "poc_in_range_0to1": r.get("poc_pos"),
+                        **(
+                            {"second_node": r.get("second_node")}
+                            if r.get("second_node") is not None
+                            else {}
+                        ),
+                    }
+                    for r in (v.get("rows") or [])
+                    if r.get("key") != "overnight" or session == "ny"
+                ],
+                **_vp_reads(v, session),
+            }
             for name, v in ((snap.get("profiles") or {}).get("assets") or {}).items()
             if wanted(name) and v.get("ok")
         },
@@ -756,10 +800,12 @@ figures, which are weight times return — not the raw percent changes.
   sector_rotation  WHICH SECTORS are being bought, as excess return over SPY. \
 Defensives leading is a different tape from technology leading.
 
-Then rates and the policy path, volatility, the volume profile levels (POC \
-is the magnet, VAH/VAL bound acceptance — name the confluences with gamma \
-walls), the dollar and commodities, the calendar ahead, earnings, expiry and \
-the headlines — context, cited where it changes the read."""
+Then rates and the policy path, volatility, the volume profile (POC is the \
+magnet, VAH/VAL bound acceptance; STATE where the session opened and where \
+price trades now against prior value — the classifier already decided, cite \
+it — and name any confluence between profile levels and gamma walls), the \
+dollar and commodities, the calendar ahead, earnings, expiry and the \
+headlines — context, cited where it changes the read."""
 
     return f"""You are a markets strategist writing the session note for one \
 trader's desk. They trade NQ/QQQ, ES/SPY and GC/GLD futures and ETFs, and they \

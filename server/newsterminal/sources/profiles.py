@@ -71,6 +71,7 @@ def collect() -> tuple[dict[str, Any], SourceStatus]:
             list((q.get("low") or [None] * n)[:n]),
             list((q.get("volume") or [None] * n)[:n]),
             now_et,
+            opens=list((q.get("open") or [None] * n)[:n]),
         )
         if not rows:
             assets[key] = {"ok": False, "error": "no window had enough traded bars", "rows": []}
