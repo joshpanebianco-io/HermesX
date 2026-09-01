@@ -715,9 +715,7 @@
     .tick,
     .wire-in,
     .live-dot,
-    .hermes-wing,
-    .hermes-helm,
-    .hermes-head {
+    .hermes-mark {
       animation: none;
     }
     /* The wash is a hue drift with no geometry, but the glitch on the same
@@ -902,49 +900,23 @@
    * shape, which is harmless for a pure translate but breaks the moment a
    * scale is added - and the orb has one.
    */
-  /* The wing beats back along its own sweep; the small travel keeps its root
-     hidden under the helmet through the whole cycle. */
-  @keyframes hermes-wing {
-    0%,
-    100% {
-      transform: translate(0, 0);
-      filter: drop-shadow(0 0 1px color-mix(in oklab, var(--icon-a) 35%, transparent));
-    }
-    50% {
-      transform: translate(-1.5px, -0.7px);
-      filter: drop-shadow(0 0 4px color-mix(in oklab, var(--icon-a) 85%, transparent));
-    }
-  }
-  /* The face and helm take the breath as LUMINANCE ONLY. A profile that
-     swells or drifts reads as a creature; light on bronze does not. */
-  @keyframes hermes-glow-a {
+  /*
+   * The talaria takes the lockup's breath as LUMINANCE ONLY, on the same 5.6s
+   * period as the wordmark wash. It is one professionally cut path, so there
+   * is no separate wing to beat — and a whole sandal that travels or swells
+   * reads as a bug, not a flight. Light rising on it does not.
+   */
+  @keyframes hermes-mark {
     0%,
     100% {
       filter: drop-shadow(0 0 1px color-mix(in oklab, var(--icon-a) 30%, transparent));
     }
     50% {
-      filter: drop-shadow(0 0 3.5px color-mix(in oklab, var(--icon-a) 75%, transparent));
+      filter: drop-shadow(0 0 4px color-mix(in oklab, var(--icon-b) 70%, transparent));
     }
   }
-  @keyframes hermes-glow-b {
-    0%,
-    100% {
-      filter: drop-shadow(0 0 1px color-mix(in oklab, var(--icon-b) 30%, transparent));
-    }
-    50% {
-      filter: drop-shadow(0 0 3.5px color-mix(in oklab, var(--icon-b) 75%, transparent));
-    }
-  }
-  .hermes-wing {
-    animation: hermes-wing 5.6s ease-in-out infinite;
-    transform-box: fill-box;
-    transform-origin: center;
-  }
-  .hermes-helm {
-    animation: hermes-glow-a 5.6s ease-in-out infinite;
-  }
-  .hermes-head {
-    animation: hermes-glow-b 5.6s ease-in-out infinite;
+  .hermes-mark {
+    animation: hermes-mark 5.6s ease-in-out infinite;
   }
 }
 

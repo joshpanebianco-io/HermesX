@@ -136,43 +136,35 @@ function Mark() {
     <svg
       width="20"
       height="20"
-      viewBox="0 0 32 32"
+      viewBox="0 0 512 512"
       aria-hidden
       className="shrink-0"
-      // The mark glows and moves past the viewBox on the beat; without this
-      // the SVG clips its own drop-shadow at the edge and the motion reads as
-      // a flicker rather than as light.
+      // The mark glows past the viewBox on the breath; without this the SVG
+      // clips its own drop-shadow at the edge.
       style={{ overflow: "visible" }}
     >
       {/*
-       * THE GOD HIMSELF, IN PROFILE — the owner pointed at the stock-vector
-       * genre (classical head, winged helm, emblem cut) and asked for that
-       * over the bare hat. Hand-cut and auditioned at chip size like its
-       * predecessors: the full striding figure dies into a pedestrian-crossing
-       * sprite at 18px, but a PROFILE head survives, because the forehead
-       * flowing straight into the nose is what makes two centimetres of
-       * silhouette read as Greek. Face in the chrome pair's second hue; helm
-       * and wing in the first.
+       * THE TALARIA — Hermes' winged sandal, in flight.
        *
-       * DRAW ORDER IS LOAD-BEARING: face, then wing, then helmet, so the
-       * wing's root tucks UNDER the dome and the feathers emerge from the
-       * helmet's edge — drawn on top, they grew through it.
+       * "Wingfoot" by Lorc, game-icons.net, CC BY 3.0 (attribution in the
+       * README). The owner rejected two of my hand-cut marks — rightly; a
+       * professional cut is a different thing — and this is the strongest
+       * Hermes symbol in the openly licensed catalogues: unmistakably his,
+       * pure speed, and it survives 20 pixels where the caduceus goes busy
+       * and a bare wing goes generic.
+       *
+       * ONE PATH, TWO HUES: the art is a single compound path, so the chrome
+       * pair rides a gradient across it instead of splitting parts — the same
+       * teal-to-magenta the wordmark washes with, which ties the lockup
+       * together.
        */}
-      <path
-        className="hermes-head"
-        d="M19.6 13.0 L 23.6 17.8 L 22.3 18.6 L 23.2 19.7 L 22.3 20.4 L 23.0 21.4 Q 23.0 22.6 22.2 23.4 Q 20.6 25.2 17.2 25.8 L 16.9 28.8 L 11.6 28.8 Q 12.2 26.0 12.0 23.6 Q 10.4 20.6 10.6 17.2 L 11.2 14.2 Z"
-        fill="var(--icon-b)"
-      />
-      <path
-        className="hermes-wing"
-        d="M15.5 11.5 C 11.0 10.2, 6.8 8.6, 2.2 5.6 C 4.8 8.6, 6.4 9.9, 8.8 11.1 C 6.0 10.7, 3.2 10.3, 0.9 9.9 C 3.4 11.9, 5.8 12.9, 8.8 13.4 C 6.8 13.6, 4.8 13.9, 2.8 14.4 C 6.2 15.9, 11.2 15.7, 14.6 14.4 Z"
-        fill="var(--icon-a)"
-      />
-      <path
-        className="hermes-helm"
-        d="M23.2 12.1 Q 24.2 12.4 23.4 11.4 Q 20.6 5.4 13.6 5.9 Q 8.3 6.4 9.3 13.9 Q 9.5 14.8 10.4 14.4 Q 16.0 11.4 21.6 12.2 Z"
-        fill="var(--icon-a)"
-      />
+      <defs>
+        <linearGradient id="hermes-grad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="var(--icon-a)" />
+          <stop offset="1" stopColor="var(--icon-b)" />
+        </linearGradient>
+      </defs>
+      <path className="hermes-mark" fill="url(#hermes-grad)" d="m494.25 21.125-164.53 1.25c-15.463 27.984-33.913 52.67-54.163 75.8 6.012 1.497 12.073 2.995 18.027 4.497l13.69 3.453-8.528 11.254c-50.415 66.503-44.632 142.087-27.36 213.694l-18.17 4.383c-16.838-69.817-23.528-148.192 22.64-217.94-88.07-21.897-183.62-43.434-253.374-89.38-1.77 4.89-1.01 10.187 2.262 17.23 2.427 5.222 6.516 11.043 12.14 17.117 53.162 37.938 130.458 65.946 189.778 75.168l-2.87 18.467c-61.85-9.616-139.642-37.397-196.036-77.227.61 5.953 2.61 12.393 6.387 19.36 6.918 12.758 19.275 26.49 35.7 38.907.84.635 1.697 1.265 2.557 1.893 42.555 22.677 93.696 38.914 140.737 42.164l-1.287 18.644c-61.147-4.222-126.33-28.22-175.672-60.745 1.03 4.922 3.253 10.397 6.885 16.38 7.367 12.14 20.078 25.484 36.23 37.675 39.264 17.838 81.604 32.938 128.62 36.473l-1.4 18.636C150.41 244.06 101.38 224.536 57.41 203.57c3.7 19.623 17.285 34.4 38.926 46.805 26.818 15.373 65.26 25.424 105.822 31.328l7.457 1.086.52 7.517c1.074 15.51 4.568 22.832 9.742 31.672l-16.13 9.438c-4.93-8.426-9.286-18.45-11.292-32.436-32.304-5.087-63.402-12.616-89.365-24.265a604.906 604.906 0 0 0-18.994 24.033c16.515 23.758 30.6 43.036 52.78 65.78l27.095-9.467 9.343-3.25 2.718 9.53c15.066 53.052 59.564 93.564 113.595 113.813 48.005 17.99 103.003 19.633 150.063.594-68.673-37.578-114.617-123.708-135.782-199.875l-1.125-4.156 2.376-3.564C348.53 203.283 425.85 148.88 494.25 123.97V21.124z" />
     </svg>
   );
 }
