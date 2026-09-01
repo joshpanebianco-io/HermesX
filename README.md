@@ -8,10 +8,8 @@ session clock.
 (The folder and the Python package are still `NewsTerminal`/`newsterminal` —
 the brand renamed on 2026-09-01, the plumbing deliberately did not.)
 
-The mark is "Wingfoot" by [Lorc](https://lorcblog.blogspot.com/), from
-[game-icons.net](https://game-icons.net/1x1/lorc/wingfoot.html), used under
-[CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) — recoloured to the
-terminal's chrome hues.
+The mark is the owner's own winged-helm line art, traced to a single vector
+path (`src/lib/hermesMark.ts`) and recoloured to the terminal's chrome hues.
 
 Next.js 15 front end on **:3100**, a Python collector on **:8100**. Sister
 project to GEXYGEN, which owns :3000/:8000 — the two are meant to run at the
