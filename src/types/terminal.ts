@@ -429,6 +429,165 @@ export interface ReportBody {
   risks: string[];
 }
 
+/* ---- the brief -------------------------------------------------------------
+ * Format "brief", generated since 2026-09-16. `report` carries the model's
+ * words and `facts` every table the page prints — computed by the collector,
+ * never by the model, and joined to the words by `id`/`key`. Reports stored
+ * before then have no `format` and a ReportBody.
+ * ---------------------------------------------------------------------------- */
+
+export type Book = "NQ" | "ES" | "GC";
+
+/** A driver's lean for the book it is listed under. */
+export type Tone = "bear" | "bull" | "mixed" | "neutral";
+
+export interface BriefCall {
+  book: Book;
+  open_bias: Bias;
+  /** 1–5. The model's own confidence, not a probability. */
+  conviction: number;
+  rest_of_day: string;
+  rest_of_day_bias: Bias;
+  wrong_if: string;
+}
+
+export interface BriefRead {
+  book: Book;
+  regime: string;
+  /** The macro transmission, cause to effect. */
+  chain: string[];
+  at_open: string;
+  wrong_if: string;
+  rest_of_day: string;
+  flips: string[];
+  drivers: { label: string; text: string; tone: Tone }[];
+}
+
+export interface BriefBody {
+  thesis: string;
+  calls: BriefCall[];
+  snapshot_watch: { key: string; note: string }[];
+  gamma_read: string;
+  catalysts_intro: string;
+  catalyst_notes: { id: string; note: string }[];
+  reads: BriefRead[];
+  rotation_read: string;
+  ratio_reads: { id: string; read: string }[];
+  rotation_notes: string[];
+  headlines: { id: string; books: Book[]; note: string }[];
+  cross_asset: string;
+  risks: string[];
+}
+
+export interface BriefSnapshotRow {
+  key: string;
+  label: string;
+  last: number | null;
+  /** A second figure on the same row — VXN beside VIX. */
+  last2: number | null;
+  dp: number;
+  suffix: string;
+  chg: number | null;
+  chg_unit: "pct" | "bp" | "pts";
+  tag: string | null;
+  sub: string | null;
+}
+
+export interface BriefLadderRow {
+  price: number;
+  label: string;
+  kind: "flip" | "call" | "put" | "range" | "em" | "ref" | "last";
+  /** Price minus last. Null on the Last row itself. */
+  dist: number | null;
+  inside_em: boolean;
+}
+
+export interface BriefLadder {
+  book: Book;
+  label: string;
+  last: number;
+  dp: number;
+  /** Half-width of the expected move. */
+  em: number | null;
+  /** "GEXYGEN", or the implied vol the move was derived from. */
+  em_basis: string | null;
+  rows: BriefLadderRow[];
+  note: string | null;
+}
+
+export interface BriefGamma {
+  book: Book;
+  label: string;
+  dp: number;
+  regime: string | null;
+  last: number | null;
+  flip: number | null;
+  /** Flip minus last. */
+  flip_dist: number | null;
+  flip_dist_pct: number | null;
+  /** The flip's distance in expected moves. */
+  flip_em: number | null;
+  call_wall: number | null;
+  put_wall: number | null;
+  em: number | null;
+  em_basis: string | null;
+}
+
+export interface BriefCatalyst {
+  id: string;
+  kind: "data" | "fed" | "auction" | "earnings";
+  when: string;
+  ts?: number;
+  title: string;
+  country: string | null;
+  lands_in_session: SessionKey | null;
+  released: boolean;
+  actual: string | null;
+  consensus: string | null;
+  previous: string | null;
+  surprise: number | null;
+  high: boolean;
+  note: string | null;
+}
+
+export interface BriefRatio {
+  id: string;
+  group: "equity" | "gold";
+  level: number;
+  /** The ratio's change over five sessions, in percent. */
+  chg_5d: number | null;
+  dir: "up" | "down" | "flat";
+}
+
+export interface BriefHeadline {
+  id: string;
+  time_et: string;
+  impact: Impact;
+  desk: Desk | null;
+  region: Region | null;
+  publisher: string;
+  title: string;
+  url: string | null;
+}
+
+export interface BriefFacts {
+  books: Book[];
+  as_of: string;
+  /** What was down when the brief was written — the banner at its top. */
+  partial: string[];
+  snapshot: BriefSnapshotRow[];
+  ladders: BriefLadder[];
+  gamma: BriefGamma[];
+  catalysts: BriefCatalyst[];
+  rotation: {
+    ratios: BriefRatio[];
+    megacaps: { symbol: string; pct: number | null; weight: number | null }[];
+    megacap_index: string | null;
+    index_pct: number | null;
+  };
+  headlines: BriefHeadline[];
+}
+
 export type ReportSession = "asia" | "london" | "ny";
 
 /** Which book the note is about. "all" covers the three together. */
@@ -448,7 +607,21 @@ export interface Report {
   et_label: string;
   model: string;
   label: string;
-  report: ReportBody | null;
+  /** "brief" for everything generated since 2026-09-16; absent on older notes. */
+  format?: "brief";
+  /**
+   * Whether the session was ALREADY TRADING when this was written.
+   *
+   * Decides whether the call reads "at the open" or "from here" — a note
+   * composed five hours into Asia is a call from the current price, and
+   * printing it under "At the open" would misdate a correct read. Absent on
+   * notes written before this was recorded, where the old pre-open labels are
+   * the honest description of what the model was asked for.
+   */
+  session_underway?: boolean;
+  /** The brief's tables, computed by the collector. */
+  facts?: BriefFacts | null;
+  report: ReportBody | BriefBody | null;
   error: string | null;
   /** Exactly what the model was shown. Stored so a call can be re-read later. */
   digest: Record<string, unknown> | null;

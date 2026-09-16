@@ -10,6 +10,9 @@
     "typecheck": "tsc --noEmit",
     "py:lint": "node scripts/py.mjs ruff check .",
     "py:types": "node scripts/py.mjs mypy",
+    "icon": "node scripts/make-icon.mjs",
+    "shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-shortcut.ps1",
+    "shortcut:collector": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-shortcut.ps1 -Collector",
     "check": "npm run typecheck && npm run lint && npm run py:lint && npm run py:types && npm run py:test",
     "py:test": "node scripts/py.mjs pytest"
   },

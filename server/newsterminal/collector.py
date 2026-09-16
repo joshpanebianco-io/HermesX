@@ -66,7 +66,8 @@ class Collector:
         # block name → (fn, interval_sec, next_due_monotonic)
         self._jobs: dict[str, tuple[Callable[[], None], float, float]] = {}
         self._state: dict[str, Any] = {
-            "quotes": [], "sectors": [], "wire": [], "calendar": [], "earnings": [],
+            "quotes": [], "sectors": [], "context": [], "wire": [], "calendar": [],
+            "earnings": [],
             "rates": {}, "ranges": {"assets": {}}, "constituents": {"indices": {}},
             "fed": [],
             "fomc": [],
@@ -104,6 +105,9 @@ class Collector:
             "auctions": (self._do_auctions, 6 * 3600.0, now + 5.0),
             # Five minutes: the levels move slowly and the fetch is 3 x 55KB.
             "profiles": (self._do_profiles, 300.0, now + 8.0),
+            # Daily bars for the session brief. The sectors' clock, because
+            # the week and month changes it feeds move no faster than theirs.
+            "context": (self._do_context, config.QUOTES_SEC * 15, now + 4.4),
         }
 
     # ---------------------------------------------------------------- jobs
@@ -124,6 +128,10 @@ class Collector:
     def _do_sectors(self) -> None:
         rows, st = quotes_src.collect_sectors()
         self._commit("sectors", rows if st.ok else None, st)
+
+    def _do_context(self) -> None:
+        rows, st = quotes_src.collect_context()
+        self._commit("context", rows if st.ok else None, st)
 
     def _do_wire(self) -> None:
         items, feeds = wire_src.collect()

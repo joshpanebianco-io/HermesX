@@ -161,26 +161,43 @@ The left column's core: three panels, one price ladder each, `NQ / ES / GC` pick
 ### The AI session read
 ![Session report](docs/media/report.png)
 
-The Report tab generates a **session note** on demand: pick the session (Asia /
-London / New York / auto-by-clock) and the book (NQ / ES / GC / all three), and the
-collector assembles a structured digest of everything above — then an LLM (via
-OpenRouter, with a model-and-mode fallback chain) writes the note. Its anatomy:
+The Report tab generates a **pre-session brief** on demand: pick the session (Asia /
+London / New York / auto-by-clock) and the book (NQ / ES / GC / all three). The
+collector computes every table on the page from the live snapshot, then an LLM (via
+OpenRouter, with a model-and-mode fallback chain) writes the read around them. Top to
+bottom:
 
-- **The call** — bias on the bear/bull scale with a 1–5 conviction, where a hedged
-  read honestly held is worth more than a confident guess.
-- **Why** — each driver quotes the exact digest fields it rests on
-  (`gamma_levels.NQ.levels[2].price: 29406.0`), so every claim is auditable.
-- **How the session should behave** — the regime read: what positive gamma at these
-  walls, this rotation and this rates pricing usually does to the tape.
-- **Levels to watch** — the handful of prices the note actually turns on, drawn from
-  the gamma walls, the profile and the session ranges.
-- **What would change it** — the invalidation: the prices and prints that flip the
-  bias, stated before the session rather than rationalised after it.
-- **Risks** — scheduled and unscheduled ways the read dies.
-- **Past calls** — every prior note kept with its full digest attached, so any call
-  can be audited against exactly the data it saw.
+- **Partial data** — which sources were down when it was written, so a missing level
+  is a stated gap rather than a silent one.
+- **Thesis and calls** — the one idea of the day, then a card per book: the call at
+  the open with its conviction, the rest-of-day lean, and the price that makes it
+  wrong.
+- **Snapshot** — the books, the dollar, the 10Y (and the real yield for gold), vol,
+  oil and the yen, with week and month context; the model flags the rows to watch.
+- **Levels** — a ladder per book in price order: gamma flip and walls, the
+  expected-move band (GEXYGEN's own, or a one-day 1σ from VXN / VIX / GVZ when it is
+  down), the overnight or handover range, prior-RTH high / low / POC and settle, each
+  measured from last.
+- **Dealer gamma** — regime, the flip's distance in percent and in expected moves,
+  the walls.
+- **Catalysts** — data, the Fed (with what each FOMC has priced), long-end auctions
+  and bellwether earnings, from twelve hours back to three days out; the model notes
+  the ones that matter.
+- **The read** — per book: the regime, the macro transmission as a chain of causes,
+  the open, the invalidation, the rest of day, what flips it, and drivers tagged
+  bear / bull / mixed / neutral.
+- **Rotation** — six equity ratios (or GDX/GLD and gold/silver) with five-day
+  direction, the megacaps' moves, and the model's read of the tape.
+- **Headlines that move price** — picked from the wire by id and tagged with the books
+  they move.
+- **Past calls** — every prior brief kept with its full digest and tables attached, so
+  any call can be audited against exactly the data it saw.
 
 The design principle throughout: **the engine computes, the model narrates.**
+
+- The tables are never the model's. The page prints them from computed facts, and the
+  model's notes join onto rows by id — a note pointing at an id that does not exist is
+  dropped before it is stored.
 
 - The digest is scoped to the chosen book — the instrument's own data is one block,
   everything else is explicitly `context_only`, because structure is obeyed where
@@ -255,7 +272,8 @@ Windows, Node 20+, Python 3.11+.
 ```powershell
 npm install
 cp .env.example .env.local     # add an OpenRouter key if you want session reports
-.\dev.ps1                      # both halves, each in its own window
+.\dev.ps1                      # every half in its own window, then the browser
+npm run shortcut               # optional: the same thing, on the desktop
 ```
 
 - Web: **http://localhost:3100** · Collector: **http://127.0.0.1:8100**
@@ -263,7 +281,17 @@ cp .env.example .env.local     # add an OpenRouter key if you want session repor
   row per source per refresh, with ages and item counts. Always start it through the
   script; it is what loads `.env.local`.
 - The gamma panel reads a companion options service on `:8000`; without it, that one
-  panel reports itself unavailable and everything else runs normally.
+  panel reports itself unavailable and everything else runs normally. `dev.ps1` will
+  start that service too if it finds it beside this repo (or at `NT_GEXYGEN_HOME`) —
+  a launch-time convenience only, skipped with `-NoGexygen`, and silent about every
+  way it can be absent.
+- Switches: `-CollectorOnly` (feeds, no web, no browser), `-NoBrowser`, `-Force`
+  (start anyway, and clash). Everything already listening is left alone, so a second
+  run restarts nothing and is simply how you get the browser tab back.
+- `npm run shortcut` puts a **HERMESX** launcher on the desktop, winged helm and all,
+  pointed at `dev.ps1`; `npm run shortcut:collector` adds a feed-only one beside it.
+  The icon is `public/hermesx.ico`, rendered from the same traced path as the header
+  by `npm run icon` — re-run that only if the mark or its hues change.
 
 Checks: `npm run check` runs TypeScript, ESLint, Ruff, mypy (strict) and the pytest
 suite — 135 tests, most of them regression tests bought with a real observed bug:
@@ -293,4 +321,6 @@ extractor's four observed wrappings.
 The winged helm is my own line art. In the app it lives as a single traced vector
 path (`src/lib/hermesMark.ts`), recoloured live to the terminal's chrome hues — the
 favicon and the header render from the same path, so the tab and the page are one
-identity.
+identity. The desktop icon reads that same file rather than copying it, and differs
+only where it has to: a browser tab supplies its own background, a wallpaper does
+not, so the shortcut carries the chassis-black tile the tab goes without.

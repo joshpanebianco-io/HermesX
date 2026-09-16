@@ -33,6 +33,8 @@ export interface ReportController {
   viewing: string | null;
   generate: () => void;
   open: (id: string) => void;
+  /** Delete one stored report. Permanent — the panel asks first. */
+  discard: (id: string) => void;
 }
 
 export function useReport(initial: ReportFeed | null): ReportController {
@@ -99,5 +101,32 @@ export function useReport(initial: ReportFeed | null): ReportController {
     })();
   }, []);
 
-  return { pick, setPick, book, setBook, feed, busy, viewing, generate, open };
+  /*
+   * The DELETE hands back the refreshed list and latest in one response, so the
+   * whole feed is replaced rather than spliced locally — the server is the only
+   * thing that knows what "latest" is once the newest report is the one that
+   * went.
+   *
+   * `viewing` is cleared when the report being READ is the one deleted, which
+   * drops the panel back to whatever is now latest. Deleting some other row
+   * leaves your place alone; re-pointing the reader because an unrelated line
+   * item went would be the panel moving under you.
+   */
+  const discard = useCallback((id: string) => {
+    void (async () => {
+      try {
+        const r = await fetch(`/api/report/${encodeURIComponent(id)}`, {
+          method: "DELETE",
+          cache: "no-store",
+        });
+        const next = (await r.json()) as ReportFeed;
+        setViewing((v) => (v === id ? null : v));
+        setFeed(next);
+      } catch {
+        /* same */
+      }
+    })();
+  }, []);
+
+  return { pick, setPick, book, setBook, feed, busy, viewing, generate, open, discard };
 }

@@ -6,13 +6,19 @@ THREE WINDOWS, AND WHICH ONES EXIST DEPENDS ON THE CLOCK (owner spec,
 
   prev RTH     the most recent COMPLETED 09:30-16:00 ET cash session — the
                reference levels everyone marks before any session.
-  overnight    the completed 18:00 -> 09:30 Globex session. Only distinct
-               from "developing" during and after the NY day it preceded;
-               while Asia or London is trading, the overnight IS the
-               developing profile and showing it twice would be the same
-               numbers under two names.
+  overnight    the most recent COMPLETED 18:00 -> 09:30 Globex session. In New
+               York that is the block that ended at this morning's open; while
+               Asia or London trade, tonight's is the DEVELOPING profile, so
+               the completed one is the night before. Two different windows
+               either way, never the same numbers twice.
   developing   anchored 18:00 ET while Asia/London trade, re-anchored 09:30
                once New York opens. The live one.
+
+THE TWO COMPLETED ROWS ARE NAMED BY WHETHER ANYTHING HAS SUPERSEDED THEM.
+"Recent" means nothing of that kind has begun since — it is still the latest
+word that kind of session has said. "Prev" means a newer one exists, developing
+or complete. So the kind that is developing right now is the one that pushes
+its own predecessor back, and the two labels swap at 09:30 and 18:00.
 
 THE LEVELS, not the histogram. POC is the price with the most volume (the
 magnet), VAH/VAL bound the 70% value area (acceptance). They are read beside
@@ -191,17 +197,52 @@ def prev_trading_day(d: datetime) -> datetime:
 def windows(now_et: datetime) -> list[dict[str, Any]]:
     """Which profiles exist right now, and their [start, end) instants.
 
-    The developing window's anchor is the spec's whole point: 18:00 ET while
-    Asia and London trade, 09:30 once New York opens. The overnight appears
-    as its own row only once it is COMPLETE — while it is still forming it
-    is the developing profile, and one set of numbers should not wear two
-    names.
+    THREE REFERENCES AT ALL HOURS: the last completed RTH, the last completed
+    overnight, and the session developing now. The developing window's anchor
+    is the spec's whole point — 18:00 ET while Asia and London trade, 09:30
+    once New York opens — and the two completed windows are the handover it is
+    being read against.
+
+    THE OVERNIGHT ROW IS THE LAST **COMPLETED** ONE, WHICH IS NOT THE SAME AS
+    "last night". Inside New York that is the 18:00-09:30 block that just
+    finished a few hours ago. Inside Asia or London the session forming right
+    now IS an overnight, so the completed one is the night BEFORE — and it is
+    still the right reference, because the level a trader checks at 23:00 is
+    where the previous night's volume built, not where tonight's has got to so
+    far. That second row used to be dropped entirely outside New York on the
+    grounds that one set of numbers should not wear two names; correct about
+    the names, wrong about the row, because the developing profile and the
+    previous night are different windows and the reader wants both.
+
+    "RECENT" VS "PREV" IS NOT DECORATION, IT IS THE COUNT. A completed window is
+    RECENT while nothing of its kind has begun since — it is still the latest
+    word that kind of session has said. It becomes PREV the moment a newer one
+    exists, developing or complete, because there is now something in front of
+    it. So the kind that is currently developing is the one that pushes its own
+    predecessor back: in Asia the RTH above is the most recent cash session
+    there is ("Recent RTH") while last night has already been superseded by
+    tonight ("Prev overnight"), and once New York opens those two swap. In the
+    16:00-18:00 lull nothing is developing, so neither has been superseded and
+    both read "Recent".
     """
     d = now_et.date()
     t = now_et.time()
 
     def at(day: Any, tm: time) -> datetime:
         return datetime(day.year, day.month, day.day, tm.hour, tm.minute, tzinfo=ET)
+
+    def overnight_before(ref: datetime, label: str) -> dict[str, Any]:
+        """The overnight that ENDED at `ref`'s 09:30 — so 18:00 the trading day before.
+
+        Anchored to the cash day it fed into rather than to a calendar
+        subtraction, which is what carries it over weekends: on Sunday evening
+        `ref` is Friday, so this is Thursday 18:00 -> Friday 09:30 rather than a
+        Saturday window with no bars in it.
+        """
+        return {
+            "key": "overnight", "label": label, "kind": "done",
+            "start": at(prev_trading_day(ref), GLOBEX_OPEN), "end": at(ref, RTH_OPEN),
+        }
 
     out: list[dict[str, Any]] = []
 
@@ -211,7 +252,7 @@ def windows(now_et: datetime) -> list[dict[str, Any]]:
         prev = prev_trading_day(now_et)
         out.append({"key": "prev_rth", "label": "Prev RTH", "kind": "done",
                     "start": at(prev, RTH_OPEN), "end": at(prev, RTH_CLOSE)})
-        out.append({"key": "overnight", "label": "Overnight", "kind": "done",
+        out.append({"key": "overnight", "label": "Recent overnight", "kind": "done",
                     "start": at(prev, GLOBEX_OPEN), "end": at(d, RTH_OPEN)})
         out.append({"key": "dev", "label": "Live · 09:30", "kind": "live",
                     "start": at(d, RTH_OPEN), "end": now_et})
@@ -219,15 +260,16 @@ def windows(now_et: datetime) -> list[dict[str, Any]]:
         # Post-close lull: today's cash just completed; nothing develops
         # until Globex reopens at 18:00.
         prev = prev_trading_day(now_et)
-        out.append({"key": "prev_rth", "label": "RTH (today)", "kind": "done",
+        out.append({"key": "prev_rth", "label": "Recent RTH", "kind": "done",
                     "start": at(d, RTH_OPEN), "end": at(d, RTH_CLOSE)})
-        out.append({"key": "overnight", "label": "Overnight", "kind": "done",
+        out.append({"key": "overnight", "label": "Recent overnight", "kind": "done",
                     "start": at(prev, GLOBEX_OPEN), "end": at(d, RTH_OPEN)})
     elif t >= GLOBEX_OPEN:
         # Globex evening (Asia). Sunday's reference cash day is Friday.
         rth_day = d if now_et.weekday() < 5 else prev_trading_day(now_et).date()
-        out.append({"key": "prev_rth", "label": "Prev RTH", "kind": "done",
+        out.append({"key": "prev_rth", "label": "Recent RTH", "kind": "done",
                     "start": at(rth_day, RTH_OPEN), "end": at(rth_day, RTH_CLOSE)})
+        out.append(overnight_before(at(rth_day, RTH_OPEN), "Prev overnight"))
         out.append({"key": "dev", "label": "Live · 18:00", "kind": "live",
                     "start": at(d, GLOBEX_OPEN), "end": now_et})
     else:
@@ -236,8 +278,9 @@ def windows(now_et: datetime) -> list[dict[str, Any]]:
         # Sunday, where the bars genuinely start.
         anchor_day = d - timedelta(days=1)
         prev = prev_trading_day(now_et)
-        out.append({"key": "prev_rth", "label": "Prev RTH", "kind": "done",
+        out.append({"key": "prev_rth", "label": "Recent RTH", "kind": "done",
                     "start": at(prev, RTH_OPEN), "end": at(prev, RTH_CLOSE)})
+        out.append(overnight_before(prev, "Prev overnight"))
         if now_et.weekday() < 5 and anchor_day.weekday() != 5:  # Saturday has no bars
             out.append({"key": "dev", "label": "Live · 18:00", "kind": "live",
                         "start": at(anchor_day, GLOBEX_OPEN), "end": now_et})

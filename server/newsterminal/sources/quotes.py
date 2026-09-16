@@ -123,6 +123,28 @@ SECTORS: list[tuple[str, str, str]] = [
     ("RSP", "RSP", "S&P 500 equal weight"),
 ]
 
+# THE MULTI-DAY CONTEXT a desk brief quotes and a one-day board cannot: "WTI
+# +11% on the week", "10Y from 4.80 to 4.96 in five sessions", "miners lagging
+# GLD". Daily bars over a month, fetched on the sectors' clock and kept out of
+# UNIVERSE so the board's fifteen-second poll never pays for a month of
+# history. IWM, GDX and GVZ live only here: they are ratio legs and an implied
+# vol for the brief, not rows anyone wants on the board.
+CONTEXT: list[tuple[str, str, str]] = [
+    ("NQ", "NQ=F", "Nasdaq 100 fut"),
+    ("ES", "ES=F", "S&P 500 fut"),
+    ("GC", "GC=F", "Gold fut"),
+    ("SILVER", "SI=F", "Silver"),
+    ("WTI", "CL=F", "WTI crude"),
+    ("US10Y", "^TNX", "10-year"),
+    ("DXY", "DX-Y.NYB", "Dollar index"),
+    ("USDJPY", "JPY=X", "USD/JPY"),
+    ("QQQ", "QQQ", "QQQ"),
+    ("IWM", "IWM", "Russell 2000 ETF"),
+    ("GLD", "GLD", "GLD"),
+    ("GDX", "GDX", "Gold miners ETF"),
+    ("GVZ", "^GVZ", "Gold vol (GVZ)"),
+]
+
 # Yahoo starts truncating the response somewhere above ~20 symbols; 12 keeps
 # every chunk comfortably inside that and still costs only four requests.
 CHUNK = 12
@@ -244,6 +266,82 @@ def collect() -> tuple[list[dict[str, Any]], SourceStatus]:
     return rows, st
 
 
+def _daily_row(key: str, label: str, resp: dict[str, Any]) -> dict[str, Any] | None:
+    """One month of daily bars → day, week and month change. Pure.
+
+    The changes come as percentages AND as plain differences, because a yield
+    is discussed in the second: "the 10Y is +3.6% on the week" is true and
+    nobody says it.
+    """
+    meta = resp.get("meta") or {}
+    px = meta.get("regularMarketPrice")
+    try:
+        closes = [
+            float(c)
+            for c in (((resp.get("indicators") or {}).get("quote") or [{}])[0].get("close") or [])
+            if c is not None
+        ]
+    except (TypeError, ValueError, IndexError, AttributeError):
+        closes = []
+    if px is None or len(closes) < 2:
+        return None
+    # THE PRIOR CLOSE COMES FROM THE SERIES, NOT FROM meta.
+    #
+    # Over a 1-month range `chartPreviousClose` is the close before the
+    # WINDOW, not before today — so using it here printed the month's move
+    # in the day column and had Technology up 8.5% "today". The daily bars
+    # are right there: closes[-1] is today's (still forming), closes[-2] is
+    # yesterday's settle, which is what a day change is measured against.
+    prev = closes[-2]
+    first = closes[0]
+    wk1 = closes[-6] if len(closes) >= 6 else closes[0]
+    return {
+        "key": key,
+        "label": label,
+        "last": px,
+        "day_pct": ((px - prev) / prev * 100.0) if prev else None,
+        "week_pct": ((px - wk1) / wk1 * 100.0) if wk1 else None,
+        "month_pct": ((px - first) / first * 100.0) if first else None,
+        "week_chg": px - wk1,
+        "month_chg": px - first,
+        "closes": closes,
+    }
+
+
+def collect_context() -> tuple[list[dict[str, Any]], SourceStatus]:
+    """Daily bars for the brief's multi-day figures. See CONTEXT."""
+    st = SourceStatus("Daily context")
+    got: dict[str, Any] = {}
+    errors: list[str] = []
+    for chunk in _chunks([c[1] for c in CONTEXT], CHUNK):
+        part, err = _spark(chunk, "1mo", "1d", ttl=300.0)
+        got.update(part)
+        if err:
+            errors.append(err)
+
+    rows: list[dict[str, Any]] = []
+    for key, sym, label in CONTEXT:
+        resp = got.get(sym)
+        row = _daily_row(key, label, resp) if resp else None
+        if row is None:
+            continue
+        row["closes"] = row["closes"][-23:]
+        rows.append(row)
+
+    st.items = len(rows)
+    st.ok = len(rows) > 0
+    st.source = "live" if st.ok else "unavailable"
+    st.age_min = 0.0 if st.ok else None
+    if errors:
+        st.error = errors[0]
+    missing = len(CONTEXT) - len(rows)
+    if missing:
+        st.notes.append(f"{missing} instrument(s) did not quote")
+    if st.ok:
+        st.last_ok_utc = datetime.now(UTC).isoformat()
+    return rows, st
+
+
 def collect_sectors() -> tuple[list[dict[str, Any]], SourceStatus]:
     """The eleven SPDRs plus SPY and RSP, on a 1-month clock.
 
@@ -264,43 +362,12 @@ def collect_sectors() -> tuple[list[dict[str, Any]], SourceStatus]:
     rows: list[dict[str, Any]] = []
     for key, sym, label in SECTORS:
         resp = got.get(sym)
-        if not resp:
+        row = _daily_row(key, label, resp) if resp else None
+        if row is None:
             continue
-        meta = (resp.get("meta") or {})
-        px = meta.get("regularMarketPrice")
-        try:
-            closes = [
-                float(c)
-                for c in (
-                    ((resp.get("indicators") or {}).get("quote") or [{}])[0].get("close") or []
-                )
-                if c is not None
-            ]
-        except (TypeError, ValueError, IndexError, AttributeError):
-            closes = []
-        if px is None or len(closes) < 2:
-            continue
-        # THE PRIOR CLOSE COMES FROM THE SERIES, NOT FROM meta.
-        #
-        # Over a 1-month range `chartPreviousClose` is the close before the
-        # WINDOW, not before today — so using it here printed the month's move
-        # in the day column and had Technology up 8.5% "today". The daily bars
-        # are right there: closes[-1] is today's (still forming), closes[-2] is
-        # yesterday's settle, which is what a day change is measured against.
-        prev = closes[-2]
-        first = closes[0]
-        wk1 = closes[-6] if len(closes) >= 6 else closes[0]
-        rows.append(
-            {
-                "key": key,
-                "label": label,
-                "last": px,
-                "day_pct": ((px - prev) / prev * 100.0) if prev else None,
-                "week_pct": ((px - wk1) / wk1 * 100.0) if wk1 else None,
-                "month_pct": ((px - first) / first * 100.0) if first else None,
-                "spark": closes[-30:],
-            }
-        )
+        row["spark"] = row.pop("closes")[-30:]
+        del row["week_chg"], row["month_chg"]
+        rows.append(row)
 
     # Relative strength against the cap-weighted benchmark, which is the only
     # form of this number that answers "is money rotating INTO this".

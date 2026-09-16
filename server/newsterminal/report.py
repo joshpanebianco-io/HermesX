@@ -20,6 +20,10 @@ WHAT IS DONE ANYWAY, BECAUSE IT COSTS NOTHING AND MAKES THE CALL CHECKABLE:
   3. The output is a STRUCTURED OBJECT, not prose. A schema means the panel
      renders fields rather than regexing paragraphs, and it forces the model to
      commit to a direction and a conviction instead of hedging in adjectives.
+     Since 2026-09-16 that object is a pre-session BRIEF, laid out like the
+     owner's own morning routine: a thesis, a call per book, a regime chain
+     and a read per book. Its tables are not the model's at all — see
+     `build_facts`.
   4. Reports are KEPT. The one you took at 09:00 is still there at 15:00, which
      is the only way to find out whether the calls are any good.
 
@@ -32,12 +36,13 @@ from __future__ import annotations
 
 import contextlib
 import json
+import math
 import os
 import re
 import time
 import urllib.error
 import urllib.request
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -301,6 +306,69 @@ def resolve_session(clock: dict[str, Any], want: str = "auto") -> str:
     return "ny"
 
 
+# When each session actually STARTS trading, and how many hours it runs.
+#
+# DELIBERATELY NOT `resolve_session`'S BOUNDARIES. That answers "which session
+# is this note FOR", and from 16:00 ET it already says Asia, because the note
+# worth writing at 16:30 is the one for tonight. These are the instants the
+# session itself opens and closes, which is the different question this file
+# used to never ask: at 16:30, Asia has NOT started.
+SESSION_CLOCK: dict[str, tuple[tuple[int, int], float]] = {
+    "asia": ((18, 0), 9.0),    # 18:00 -> 03:00 ET
+    "london": ((3, 0), 5.0),   # 03:00 -> 08:00 ET
+    "ny": ((9, 30), 6.5),      # 09:30 -> 16:00 ET
+}
+
+
+def _span(minutes: int) -> str:
+    """90 -> "1h 30m". Rounded to the minute; nobody reads seconds off a brief."""
+    h, m = divmod(max(0, minutes), 60)
+    if h and m:
+        return f"{h}h {m}m"
+    return f"{h}h" if h else f"{m}m"
+
+
+def session_progress(session: str, now_et: datetime) -> dict[str, Any]:
+    """Where `now` sits inside the session the note is being written for.
+
+    THE FACT THE BRIEF WAS MISSING. Everything downstream — the prompt's field
+    descriptions, the panel's headings — was written for a note composed BEFORE
+    the bell: "the call for the start of the session", "where price sits at the
+    start". Pressing Generate five hours into Asia produced exactly that note, a
+    call for an open that had already happened, read against levels price had
+    long since left. The digest carried `as_of_et` all along, but the field spec
+    said "at the start" and the field spec won.
+
+    So this states it outright and the prompt branches on it. `underway` is the
+    load-bearing bit; the minutes are what let the note say how far in it is.
+    """
+    (open_h, open_m), hours = SESSION_CLOCK.get(session, SESSION_CLOCK["ny"])
+    opened = now_et.replace(hour=open_h, minute=open_m, second=0, microsecond=0)
+    if opened > now_et:
+        # Today's open is still ahead, so the most recent one was yesterday's —
+        # which is what carries Asia across midnight: at 00:30 the session that
+        # is running started at 18:00 on the previous calendar day.
+        opened -= timedelta(days=1)
+
+    minutes_in = int((now_et - opened).total_seconds() / 60.0)
+    if 0 <= minutes_in < hours * 60:
+        return {
+            "underway": True,
+            "minutes_in": minutes_in,
+            "opened_et": opened.strftime("%H:%M"),
+            "phrase": _span(minutes_in),
+        }
+
+    opens = opened + timedelta(days=1)
+    minutes_until = max(0, int((opens - now_et).total_seconds() / 60.0))
+    return {
+        "underway": False,
+        "minutes_until": minutes_until,
+        "opens_et": opens.strftime("%H:%M"),
+        "phrase": _span(minutes_until),
+    }
+
+
 def _vp_reads(asset: dict[str, Any], session: str) -> dict[str, Any]:
     """The open-vs-value and now-vs-value facts for one asset's profiles."""
     rows = {r.get("key"): r for r in (asset.get("rows") or [])}
@@ -324,8 +392,14 @@ def _vp_reads(asset: dict[str, Any], session: str) -> dict[str, Any]:
             ("prev_rth", "vs_prev_rth_value"),
             ("overnight", "vs_overnight_value"),
         ):
+            # THE OVERNIGHT ROW USED TO BE DROPPED OUTSIDE NEW YORK, because
+            # `windows()` only emitted one during RTH and a note written for
+            # Asia would otherwise have cited a window that was still forming.
+            # It now emits the last COMPLETED overnight at every hour, which is
+            # a real reference in every session — so price is read against it in
+            # every session too.
             r = rows.get(key)
-            if r is None or (key == "overnight" and session != "ny"):
+            if r is None:
                 continue
             pos = value_position(last, r.get("vah"), r.get("val"))
             if pos:
@@ -335,19 +409,625 @@ def _vp_reads(asset: dict[str, Any], session: str) -> dict[str, Any]:
     return out
 
 
+# --------------------------------------------------------------------------
+# The brief's facts — every figure on the page that is not an opinion.
+#
+# THE ENGINE COMPUTES, THE MODEL NARRATES, and the brief is where that line is
+# drawn hardest. A pre-session brief is mostly tables: the snapshot, the levels
+# ladder, the gamma card, the catalysts, the ratio strip. Had the model written
+# them, every figure on the page would be a transcription that could slip, and
+# a mistyped call wall in a table looks exactly as authoritative as a real one.
+# So they are built here, stored beside the report, and rendered by the panel
+# from this object. The model is shown the same numbers in the digest and
+# writes only the read, pointing at rows by `id` or `key` when it annotates.
+# --------------------------------------------------------------------------
+
+BOOKS: tuple[str, ...] = ("NQ", "ES", "GC")
+BOOK_LABELS = {"NQ": "NQ", "ES": "ES", "GC": "Gold (GC)"}
+# Decimals a level is quoted to: NQ in whole points, ES in quarters, gold in
+# tenths. A ladder printing 29,408.00 carries three characters of noise a row.
+BOOK_DP = {"NQ": 0, "ES": 2, "GC": 1}
+
+# The implied vol that stands in for the expected move when GEXYGEN is not
+# answering: a one-day, one-standard-deviation move. Labelled as exactly that
+# on the page, because it is wider than an options desk's own band and must not
+# be mistaken for it.
+EM_VOL = {"NQ": "VXN", "ES": "VIX", "GC": "GVZ"}
+
+# Rank-2 and rank-3 walls make the ladder only within this many expected moves
+# of price. All seven gamma levels plus the ranges would bury the three prices
+# the session actually trades against: at 2.5 the first live NQ ladder ran to
+# seventeen rows.
+WALL_REACH_EM = 1.5
+
+# The ratio strip. Every ratio reads "the first leg against the second": up
+# means the first is winning. Legs come from the sector SPDRs or the daily
+# context block.
+EQUITY_RATIOS: list[tuple[str, str, str]] = [
+    ("XLK/XLU", "XLK", "XLU"),
+    ("XLK/SPY", "XLK", "SPY"),
+    ("XLC/XLP", "XLC", "XLP"),
+    ("QQQ/IWM", "QQQ", "IWM"),
+    ("QQQ/SPY", "QQQ", "SPY"),
+    ("XLP/SPY", "XLP", "SPY"),
+]
+GOLD_RATIOS: list[tuple[str, str, str]] = [
+    ("GDX/GLD", "GDX", "GLD"),
+    ("Gold/Silver", "GC", "SILVER"),
+]
+# A five-day ratio change inside this band is flat. Two ETFs rarely finish a
+# week at exactly the same return, and an arrow on a 0.1% drift is an arrow on
+# noise.
+RATIO_FLAT_PCT = 0.25
+
+# The collector blocks the brief leans on, worded for its partial-data banner.
+BRIEF_SOURCES = {
+    "quotes": "Quotes",
+    "gex": "GEXYGEN gamma levels",
+    "ranges": "Session ranges",
+    "profiles": "Volume profiles",
+    "context": "Daily history (week and month changes)",
+    "sectors": "Sector ETFs",
+    "calendar": "Economic calendar",
+    "rates": "Treasury curve",
+    "constituents": "Index constituents",
+    "wire": "Wire",
+}
+
+
+def books_for(asset: str) -> list[str]:
+    """The books a brief carries a call for."""
+    book = resolve_asset(asset)
+    return list(BOOKS) if book == "all" else [book]
+
+
+def _ctx(snap: dict[str, Any], key: str) -> dict[str, Any] | None:
+    return next((r for r in snap.get("context") or [] if r.get("key") == key), None)
+
+
+def _now_et(snap: dict[str, Any]) -> datetime:
+    """The snapshot's own clock, so the facts describe the moment the data does."""
+    try:
+        return datetime.fromisoformat(str((snap.get("clock") or {}).get("et"))).astimezone(ET)
+    except ValueError:
+        return datetime.now(ET)
+
+
+def _when_label(when: datetime, now: datetime) -> str:
+    """Calendar time the way a desk says it: Today 08:30 ET, Tomorrow 14:00 ET, Thu 22:30 ET."""
+    days = (when.date() - now.date()).days
+    hm = when.strftime("%H:%M")
+    if days == 0:
+        return f"Today {hm} ET"
+    if days == 1:
+        return f"Tomorrow {hm} ET"
+    return f"{when:%a} {hm} ET"
+
+
+def _stamp_label(utc: str | None, now: datetime) -> str:
+    """A headline's filing time in ET — bare when today, with the weekday when not."""
+    if not utc:
+        return ""
+    try:
+        when = datetime.fromisoformat(utc).astimezone(ET)
+    except ValueError:
+        return ""
+    return when.strftime("%H:%M ET" if when.date() == now.date() else "%a %H:%M ET")
+
+
+def _srow(
+    key: str,
+    label: str,
+    last: float | None,
+    dp: int,
+    *,
+    chg: float | None = None,
+    unit: str = "pct",
+    last2: float | None = None,
+    suffix: str = "",
+    tag: str | None = None,
+    sub: str = "",
+) -> dict[str, Any]:
+    return {
+        "key": key, "label": label, "last": last, "last2": last2, "dp": dp,
+        "suffix": suffix, "chg": round(chg, 3) if chg is not None else None,
+        "chg_unit": unit, "tag": tag, "sub": sub or None,
+    }
+
+
+def _wk_mo(row: dict[str, Any] | None, month: bool = False) -> list[str]:
+    out: list[str] = []
+    if row and row.get("week_pct") is not None:
+        out.append(f"wk {row['week_pct']:+.1f}%")
+    if row and month and row.get("month_pct") is not None:
+        out.append(f"1M {row['month_pct']:+.1f}%")
+    return out
+
+
+def _snapshot(snap: dict[str, Any], books: list[str]) -> list[dict[str, Any]]:
+    """The handful of instruments the brief is read against, each with its context."""
+    quotes = snap.get("quotes") or []
+    rates = snap.get("rates") or {}
+    equity = any(b in books for b in ("NQ", "ES"))
+    rows: list[dict[str, Any]] = []
+
+    for b in books:
+        q = _q(quotes, b)
+        if not q:
+            continue
+        bits: list[str] = []
+        if q.get("prev") is not None:
+            bits.append(f"settle {q['prev']:,.{BOOK_DP[b]}f}")
+        bits += _wk_mo(_ctx(snap, b), month=True)
+        rows.append(_srow(b, BOOK_LABELS[b], q["last"], BOOK_DP[b], chg=q.get("pct"),
+                          sub=" · ".join(bits)))
+
+    dxy = _q(quotes, "DXY")
+    if dxy:
+        rows.append(_srow("DXY", "DXY", dxy["last"], 2, chg=dxy.get("chg"), unit="pts",
+                          sub=" · ".join(_wk_mo(_ctx(snap, "DXY")))))
+
+    ten = _q(quotes, "US10Y")
+    if ten:
+        bits = []
+        closes = (_ctx(snap, "US10Y") or {}).get("closes") or []
+        if len(closes) >= 6:
+            bits.append(f"{closes[-6]:.2f} → {ten['last']:.2f} in 5 sessions")
+        if ten.get("wk52_high") and ten["last"] >= ten["wk52_high"] - 0.02:
+            bits.append("at its 52-week high")
+        rows.append(_srow(
+            "US10Y", "US 10Y", ten["last"], 2, suffix="%", unit="bp",
+            chg=ten["chg"] * 100.0 if ten.get("chg") is not None else None,
+            sub=" · ".join(bits),
+        ))
+
+    if "GC" in books:
+        real = next((r for r in rates.get("real") or [] if r.get("key") == "10Y real"), None)
+        if real:
+            be = next((s for s in rates.get("spreads") or [] if s.get("key") == "be10"), None)
+            bits = [f"breakeven {be['value']:.2f}%"] if be else []
+            if rates.get("real_as_of"):
+                bits.append(f"Treasury {rates['real_as_of']}")
+            rows.append(_srow("REAL10", "10Y real", real["value"], 2, suffix="%", unit="bp",
+                              chg=real.get("chg_bp"), sub=" · ".join(bits)))
+
+    if equity:
+        vix, vxn, v3 = _q(quotes, "VIX"), _q(quotes, "VXN"), _q(quotes, "VIX3M")
+        vt = snap.get("volterm") or {}
+        if vix or vxn:
+            bits = [f"VIX3M {v3['last']:.1f}"] if v3 else []
+            if vt.get("ratio") is not None:
+                bits.append(f"VIX/VIX3M {vt['ratio']:.2f}")
+            shape = str(vt.get("shape") or "")
+            rows.append(_srow(
+                "VOL", "VIX / VXN", (vix or {}).get("last"), 1, last2=(vxn or {}).get("last"),
+                tag=shape.capitalize() if shape not in {"", "unknown"} else None,
+                sub=" · ".join(bits),
+            ))
+
+    if "GC" in books:
+        gvz = _ctx(snap, "GVZ")
+        if gvz:
+            rows.append(_srow("GVZ", "GVZ", gvz["last"], 1, chg=gvz.get("day_pct"),
+                              sub=" · ".join(_wk_mo(gvz))))
+
+    wti = _q(quotes, "WTI")
+    if wti:
+        rows.append(_srow("WTI", "WTI", wti["last"], 2, chg=wti.get("pct"),
+                          sub=" · ".join(_wk_mo(_ctx(snap, "WTI"), month=True))))
+
+    jpy = _q(quotes, "USDJPY")
+    if jpy:
+        rows.append(_srow("USDJPY", "USD/JPY", jpy["last"], 2, chg=jpy.get("chg"), unit="pts",
+                          sub=" · ".join(_wk_mo(_ctx(snap, "USDJPY")))))
+
+    if "GC" in books:
+        si = _q(quotes, "SILVER")
+        if si:
+            rows.append(_srow("SILVER", "Silver", si["last"], 2, chg=si.get("pct"),
+                              sub=" · ".join(_wk_mo(_ctx(snap, "SILVER")))))
+    return rows
+
+
+def _gex_asset(snap: dict[str, Any], book: str) -> dict[str, Any]:
+    result: dict[str, Any] = ((snap.get("gex") or {}).get("assets") or {}).get(book) or {}
+    return result
+
+
+def _expected_move(
+    snap: dict[str, Any], book: str, last: float
+) -> tuple[float | None, str | None, float | None, float | None]:
+    """(half-width, basis, low, high): GEXYGEN's own band first, implied vol second."""
+    g = _gex_asset(snap, book)
+    hi, lo = g.get("em_hi"), g.get("em_lo")
+    if g.get("ok") and hi is not None and lo is not None and hi > lo:
+        return (hi - lo) / 2.0, "GEXYGEN", float(lo), float(hi)
+    key = EM_VOL[book]
+    src = _q(snap.get("quotes") or [], key) or _ctx(snap, key)
+    iv = (src or {}).get("last")
+    if not iv:
+        return None, None, None, None
+    em = last * float(iv) / 100.0 / math.sqrt(252.0)
+    return em, f"1σ from {key} {float(iv):.1f}", last - em, last + em
+
+
+def _ladder(
+    snap: dict[str, Any], book: str, session: str, now: datetime
+) -> dict[str, Any] | None:
+    """Every price the session trades against, in price order, measured from last."""
+    q = _q(snap.get("quotes") or [], book) or {}
+    rng = ((snap.get("ranges") or {}).get("assets") or {}).get(book) or {}
+    last = q.get("last") if q.get("last") is not None else rng.get("last")
+    if last is None:
+        return None
+    dp = BOOK_DP[book]
+    em, em_basis, em_lo, em_hi = _expected_move(snap, book, last)
+    rows: list[dict[str, Any]] = []
+
+    def add(price: Any, label: str, kind: str) -> None:
+        if isinstance(price, int | float):
+            rows.append({"price": float(price), "label": label, "kind": kind})
+
+    g = _gex_asset(snap, book)
+    if g.get("ok"):
+        for lv in g.get("levels") or []:
+            near = em is not None and abs(lv["price"] - last) <= WALL_REACH_EM * em
+            if lv.get("side") == "flip" or lv.get("rank") == 1 or near:
+                add(lv["price"], lv["label"], lv.get("side") or "ref")
+    if em_lo is not None and em_hi is not None:
+        add(em_hi, "Expected move high", "em")
+        add(em_lo, "Expected move low", "em")
+
+    # WHICH RANGE IS "THE OVERNIGHT" DEPENDS ON THE SESSION BEING WRITTEN FOR.
+    # New York opens into everything traded since 18:00; London opens into
+    # Asia. An Asia note's handover is the New York day, which the prior-RTH
+    # rows below already carry, so it gets no range row of its own.
+    sessions = {s.get("key"): s for s in rng.get("sessions") or [] if s.get("ok")}
+    handover = {"ny": (("asia", "london", "preny"), "ON"), "london": (("asia",), "Asia")}
+    if session in handover:
+        keys, prefix = handover[session]
+        picked = [sessions[k] for k in keys if k in sessions]
+        if picked:
+            add(max(s["high"] for s in picked), f"{prefix} high", "range")
+            add(min(s["low"] for s in picked), f"{prefix} low", "range")
+    hour = now.hour + now.minute / 60.0
+    if session == "ny" and 9.5 <= hour < 16.0 and "ny" in sessions:
+        add(sessions["ny"]["high"], "RTH high so far", "range")
+        add(sessions["ny"]["low"], "RTH low so far", "range")
+
+    prof = ((snap.get("profiles") or {}).get("assets") or {}).get(book) or {}
+    prev = next((r for r in prof.get("rows") or [] if r.get("key") == "prev_rth"), None)
+    if prof.get("ok") and prev:
+        add(prev.get("high"), "Prior RTH high", "ref")
+        add(prev.get("low"), "Prior RTH low", "ref")
+        add(prev.get("poc"), "Prior RTH POC", "ref")
+    add(q.get("prev"), "Prior settle", "ref")
+
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[float, str]] = set()
+    for r in sorted(rows, key=lambda r: -r["price"]):
+        if (round(r["price"], 2), r["label"]) in seen:
+            continue
+        seen.add((round(r["price"], 2), r["label"]))
+        r["dist"] = round(r["price"] - last, dp)
+        r["inside_em"] = em_lo is not None and em_hi is not None and em_lo <= r["price"] <= em_hi
+        out.append(r)
+    # Last goes in after the sort, below any level printing at exactly spot,
+    # so float noise cannot shuffle a wall to the wrong side of price.
+    at = next((i for i, r in enumerate(out) if r["price"] < last), len(out))
+    out.insert(at, {"price": float(last), "label": "Last", "kind": "last",
+                    "dist": None, "inside_em": True})
+
+    notes: list[str] = []
+    if not g.get("ok"):
+        notes.append("No gamma levels for this book: GEXYGEN is not answering for it.")
+    elif g.get("regime") == "NEG":
+        notes.append("Negative gamma: dealer hedging chases moves, so a wall that gives way "
+                     "tends to accelerate the break rather than stop it.")
+    elif g.get("regime") == "POS":
+        notes.append("Positive gamma: dealer hedging leans against moves, so the walls tend "
+                     "to hold and price pins between them.")
+    if em_basis and em_basis != "GEXYGEN":
+        notes.append(f"Expected move is a one-day {em_basis}, not GEXYGEN's band.")
+    return {
+        "book": book, "label": BOOK_LABELS[book], "last": float(last), "dp": dp,
+        "em": round(em, dp) if em is not None else None, "em_basis": em_basis,
+        "rows": out, "note": " ".join(notes) or None,
+    }
+
+
+def _gamma_card(
+    snap: dict[str, Any], book: str, ladder: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """The dealer-gamma summary for one book: regime, flip distance, walls."""
+    g = _gex_asset(snap, book)
+    if not g.get("ok"):
+        return None
+    lv = {x["key"]: x["price"] for x in g.get("levels") or []}
+    last = (ladder or {}).get("last") or g.get("spot")
+    flip, em = lv.get("flip"), (ladder or {}).get("em")
+    dp = BOOK_DP[book]
+    dist = (flip - last) if (flip is not None and last) else None
+    return {
+        "book": book, "label": BOOK_LABELS[book], "dp": dp, "regime": g.get("regime"),
+        "last": last, "flip": flip,
+        "flip_dist": round(dist, dp) if dist is not None else None,
+        "flip_dist_pct": round(dist / last * 100.0, 2) if dist is not None else None,
+        # How many expected moves away the flip sits: "0.7% away" says little
+        # until it is known whether today prices a 0.5% or a 2% range.
+        "flip_em": round(abs(dist) / em, 1) if (dist is not None and em) else None,
+        "call_wall": lv.get("call_1"), "put_wall": lv.get("put_1"),
+        "em": em, "em_basis": (ladder or {}).get("em_basis"),
+    }
+
+
+def _cat(kind: str, at: datetime, now: datetime, title: Any, **extra: Any) -> dict[str, Any]:
+    # `at`, not `when`: earnings override the `when` LABEL through **extra
+    # ("Today after the close"), and a parameter of the same name made that
+    # call a TypeError the moment a bellwether reported.
+    item: dict[str, Any] = {
+        "kind": kind, "ts": at.timestamp(), "when": _when_label(at, now), "title": title,
+        "country": None, "lands_in_session": None, "released": False, "actual": None,
+        "consensus": None, "previous": None, "surprise": None, "high": False, "note": None,
+    }
+    item.update(extra)
+    return item
+
+
+def _catalysts(snap: dict[str, Any], books: list[str], now: datetime) -> list[dict[str, Any]]:
+    """Everything scheduled from twelve hours back to three days out, in time order."""
+    now_ts = now.timestamp()
+    lo, hi = now_ts - 12 * 3600, now_ts + 3 * 86400
+    items: list[dict[str, Any]] = []
+
+    for r in snap.get("calendar") or []:
+        ts = r.get("ts")
+        if ts is None or not lo <= ts <= hi or (r.get("score") or 0) < 3:
+            continue
+        # `core` is the calendar's own "does this reach NQ, ES or GC" test.
+        # Without it the first live brief (2026-09-15) listed eleven foreign
+        # CPI and PPI prints by title alone — "CPI", "CPI", "Core CPI".
+        if not r.get("core"):
+            continue
+        # Past its time but with no actual yet is neither upcoming nor printed.
+        if ts < now_ts and not r.get("released"):
+            continue
+        # And an actual on a print still in the future is a timestamp that is
+        # wrong, not a release that came early. Seen live on 2026-09-15: China's
+        # retail sales and the UK's jobs data stamped a day late with their
+        # actuals already in, which listed yesterday's prints as upcoming.
+        if ts > now_ts and r.get("released"):
+            continue
+        items.append(_cat(
+            "data", datetime.fromtimestamp(ts, ET), now, r.get("event"),
+            country=r.get("country"),
+            # Which trading session the print lands in — an Asia note cares
+            # about the 21:30 ET GDP in a way a NY note does not.
+            lands_in_session=r.get("session"),
+            released=bool(r.get("released")), actual=r.get("actual_raw"),
+            consensus=r.get("consensus_raw"), previous=r.get("previous_raw"),
+            surprise=round(r["surprise"], 2) if r.get("surprise") is not None else None,
+            high=(r.get("score") or 0) >= 4,
+        ))
+
+    # The FOMC a week out is on the brief every day of that week; a speech is
+    # only worth a row inside the three-day window.
+    meetings = {m.get("date"): m for m in (snap.get("policy_meetings") or {}).get("meetings") or []}
+    for e in snap.get("fed") or []:
+        ts = e.get("ts")
+        if ts is None or not lo <= ts <= now_ts + 7 * 86400 or (not e.get("major") and ts > hi):
+            continue
+        note = e.get("note")
+        m = meetings.get(e.get("date")) if e.get("kind") == "FOMC" else None
+        if m and m.get("move_bp") is not None and m.get("implied_after") is not None:
+            note = (f"{m['move_bp']:+.0f}bp priced ({m.get('stance')}), "
+                    f"{m['implied_after']:.2f}% implied after")
+        items.append(_cat("fed", datetime.fromtimestamp(ts, ET), now, e.get("title"),
+                          country="US", released=ts < now_ts, high=bool(e.get("major")),
+                          note=note))
+
+    for a in snap.get("auctions") or []:
+        ts = a.get("ts")
+        if ts is None or not a.get("major") or not lo <= ts <= hi:
+            continue
+        amt = a.get("amount_bn")
+        items.append(_cat(
+            "auction", datetime.fromtimestamp(ts, ET), now, f"{a.get('label')} auction",
+            country="US", released=ts < now_ts,
+            note=(f"${amt:g}bn" + (", reopening" if a.get("reopening") else "")) if amt else None,
+        ))
+
+    if any(b in books for b in ("NQ", "ES")):
+        for e in snap.get("earnings") or []:
+            if not e.get("bellwether") and (e.get("market_cap") or 0) < 200e9:
+                continue
+            try:
+                day = datetime.strptime(str(e.get("date")), "%Y-%m-%d")
+            except ValueError:
+                continue
+            timing = str(e.get("when") or "")
+            hh, mm = {"pre": (8, 0), "after": (16, 5)}.get(timing, (12, 0))
+            when = day.replace(hour=hh, minute=mm, tzinfo=ET)
+            if not lo <= when.timestamp() <= now_ts + 2 * 86400:
+                continue
+            said = {"pre": "before the open", "after": "after the close"}.get(timing, "time TBC")
+            items.append(_cat(
+                "earnings", when, now, f"{e.get('symbol')} earnings",
+                when=f"{_when_label(when, now).split(' ')[0]} {said}",
+                released=bool(e.get("eps_actual")), actual=e.get("eps_actual"),
+                consensus=e.get("eps_forecast"),
+            ))
+
+    # WHAT IS STILL TO COME OUTRANKS WHAT ALREADY PRINTED. Capped in plain time
+    # order, the list filled with the morning's releases and dropped the next
+    # day's FOMC — the one row a pre-session brief exists to carry. So the next
+    # ten scheduled items are kept first, then the six most recent prints, and
+    # only then does the lot go back into time order.
+    items.sort(key=lambda c: c["ts"])
+    ahead = [c for c in items if c["ts"] >= now_ts][:10]
+    done = [c for c in items if c["ts"] < now_ts][-6:]
+    kept = sorted(done + ahead, key=lambda c: c["ts"])
+    for i, c in enumerate(kept, start=1):
+        c["id"] = f"c{i}"
+    return kept
+
+
+def _leg(snap: dict[str, Any], key: str) -> dict[str, Any] | None:
+    row = next((s for s in snap.get("sectors") or [] if s.get("key") == key), None)
+    return row or _ctx(snap, key)
+
+
+def _rotation(snap: dict[str, Any], books: list[str]) -> dict[str, Any]:
+    """The ratio strip with five-day direction, and the index heavyweights' moves."""
+    specs: list[tuple[str, str, str, str]] = []
+    if any(b in books for b in ("NQ", "ES")):
+        specs += [(name, a, b, "equity") for name, a, b in EQUITY_RATIOS]
+    if "GC" in books:
+        specs += [(name, a, b, "gold") for name, a, b in GOLD_RATIOS]
+
+    ratios: list[dict[str, Any]] = []
+    for name, key_a, key_b, group in specs:
+        leg_a, leg_b = _leg(snap, key_a), _leg(snap, key_b)
+        if not leg_a or not leg_b or not leg_a.get("last") or not leg_b.get("last"):
+            continue
+        chg = None
+        if leg_a.get("week_pct") is not None and leg_b.get("week_pct") is not None:
+            chg = ((1 + leg_a["week_pct"] / 100.0) / (1 + leg_b["week_pct"] / 100.0) - 1) * 100.0
+        way = "flat"
+        if chg is not None and abs(chg) >= RATIO_FLAT_PCT:
+            way = "up" if chg > 0 else "down"
+        level = leg_a["last"] / leg_b["last"]
+        ratios.append({
+            "id": name, "group": group, "level": round(level, 3 if level < 10 else 2),
+            "chg_5d": round(chg, 2) if chg is not None else None, "dir": way,
+        })
+
+    index = "NQ" if "NQ" in books else ("ES" if "ES" in books else None)
+    megacaps: list[dict[str, Any]] = []
+    proxy_key = {"NQ": "QQQ", "ES": "SPY"}.get(index or "")
+    if index:
+        idx = ((snap.get("constituents") or {}).get("indices") or {}).get(index) or {}
+        heavy = sorted(idx.get("members") or [], key=lambda m: -(m.get("weight") or 0))[:8]
+        megacaps = [
+            {"symbol": m.get("symbol"), "pct": m.get("pct"), "weight": m.get("weight")}
+            for m in heavy
+        ]
+    proxy = _q(snap.get("quotes") or [], proxy_key) if proxy_key else None
+    return {
+        "ratios": ratios,
+        "megacaps": megacaps,
+        "megacap_index": proxy_key,
+        "index_pct": round(proxy["pct"], 2) if proxy and proxy.get("pct") is not None else None,
+    }
+
+
+def _session_homes(session: str) -> set[str]:
+    """The wire regions a session's desk counts as its own tape.
+
+    Sets, because a session can have more than one home region: London's tape
+    is the UK's AND the euro area's — with only "eu" here, the Bank of England
+    ranked as foreign news in a London note.
+    """
+    return {
+        "asia": {"apac", "global"},
+        "london": {"uk", "eu", "global"},
+        "ny": {"us", "global"},
+    }.get(session, {"us", "global"})
+
+
+def _headlines(snap: dict[str, Any], session: str, now: datetime) -> list[dict[str, Any]]:
+    """The material wire, weighted to the session, each with an id the brief picks by.
+
+    WEIGHTED TO THE SESSION BEING TRADED. For an Asia note, an item from
+    Nikkei Asia or the RBA is worth more than a US market wrap, and the reverse
+    holds at 09:00 ET. Regional items for the session come first, the rest
+    follow, and nothing is dropped for being from the wrong desk — a strike on a
+    refinery is an Asia story too.
+    """
+    homes = _session_homes(session)
+    material = [h for h in snap.get("wire") or [] if h.get("impact") in {"high", "medium"}]
+    local = [h for h in material if h.get("region") in homes]
+    rest = [h for h in material if h.get("region") not in homes]
+    return [
+        {
+            "id": f"h{i}",
+            # In ET. The digest used to print the UTC clock under a `time_et`
+            # key, four hours out for every headline the model timed.
+            "time_et": _stamp_label(h.get("utc"), now),
+            "impact": h.get("impact"),
+            "desk": h.get("category"),
+            "region": h.get("region"),
+            "publisher": h.get("publisher"),
+            "title": h.get("title"),
+            "url": h.get("url"),
+        }
+        for i, h in enumerate([*local[:24], *rest[:8]], start=1)
+    ]
+
+
+def _partial(snap: dict[str, Any], books: list[str]) -> list[str]:
+    """What the brief is missing today, worded for the banner at the top of it."""
+    status = snap.get("status") or {}
+    out: list[str] = []
+    for key, name in BRIEF_SOURCES.items():
+        st = status.get(key)
+        if st is None:
+            out.append(f"{name}: not collected yet.")
+        elif not st.get("ok"):
+            err = str(st.get("error") or "").strip()
+            out.append(f"{name} unavailable" + (f" ({err[:90]})" if err else "") + ".")
+    if (status.get("gex") or {}).get("ok"):
+        for b in books:
+            g = _gex_asset(snap, b)
+            if not g.get("ok"):
+                why = f" ({g['error']})" if g.get("error") else ""
+                out.append(f"No gamma levels for {b}{why}.")
+    wanted = ["DXY", "US10Y", "WTI", "USDJPY"]
+    if any(b in books for b in ("NQ", "ES")):
+        wanted += ["VIX", "VXN", "VIX3M"]
+    have = {q.get("key") for q in snap.get("quotes") or []}
+    missing = [k for k in wanted if k not in have]
+    if missing and (status.get("quotes") or {}).get("ok"):
+        out.append(f"No quote for {', '.join(missing)}.")
+    return out
+
+
+def build_facts(snap: dict[str, Any], session: str = "ny", asset: str = "all") -> dict[str, Any]:
+    """Every table on the brief, computed from the snapshot. No I/O."""
+    books = books_for(asset)
+    now = _now_et(snap)
+    ladders = [lad for b in books if (lad := _ladder(snap, b, session, now))]
+    by_book = {lad["book"]: lad for lad in ladders}
+    return {
+        "books": books,
+        "as_of": f"{now:%a %d %b %Y}, {now:%H:%M} ET",
+        "partial": _partial(snap, books),
+        "snapshot": _snapshot(snap, books),
+        "ladders": ladders,
+        "gamma": [card for b in books if (card := _gamma_card(snap, b, by_book.get(b)))],
+        "catalysts": _catalysts(snap, books, now),
+        "rotation": _rotation(snap, books),
+        "headlines": _headlines(snap, session, now),
+    }
+
+
 def build_digest(
-    snap: dict[str, Any], session: str = "ny", asset: str = "all"
+    snap: dict[str, Any],
+    session: str = "ny",
+    asset: str = "all",
+    facts: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The terminal, compressed to the facts a desk would read out loud."""
+    if facts is None:
+        facts = build_facts(snap, session, asset)
     quotes = snap.get("quotes") or []
     clock = snap.get("clock") or {}
+    # Off the SNAPSHOT's clock, not the wall clock, so the digest and the note
+    # describe the same instant even if the snapshot is a little behind.
+    _prog = session_progress(session, _now_et(snap))
     rates = snap.get("rates") or {}
     sectors = snap.get("sectors") or []
-    cal = snap.get("calendar") or []
-    wire = snap.get("wire") or []
     gex = (snap.get("gex") or {}).get("assets") or {}
-
-    now_ts = time.time()
 
     # THE BLOCK NAMES CARRY THE SCOPE, because a structure is obeyed where an
     # instruction is only read. Told in prose to write about NQ but handed eight
@@ -416,67 +1096,6 @@ def build_digest(
     ranked = sorted(movable, key=lambda s: -(s["rs_day"]))
     rsp = next((s for s in sectors if s.get("key") == "RSP"), None)
 
-    # ---- calendar: what is still to come today, plus what just printed ----
-    ahead = [
-        {
-            "et": r.get("et"),
-            "country": r.get("country"),
-            "event": r.get("event"),
-            # Which trading session the print lands in — an Asia note cares
-            # about the 21:30 ET GDP in a way a NY note does not.
-            "lands_in_session": r.get("session"),
-            "consensus": r.get("consensus_raw"),
-            "previous": r.get("previous_raw"),
-            "impact": r.get("score"),
-        }
-        for r in cal
-        if not r.get("released") and (r.get("ts") or 0) >= now_ts and (r.get("score") or 0) >= 3
-    ][:10]
-    printed = [
-        {
-            "et": r.get("et"),
-            "country": r.get("country"),
-            "event": r.get("event"),
-            "actual": r.get("actual_raw"),
-            "consensus": r.get("consensus_raw"),
-            "surprise": round(r["surprise"], 2) if r.get("surprise") is not None else None,
-        }
-        for r in sorted(
-            [r for r in cal if r.get("released") and (r.get("score") or 0) >= 3],
-            key=lambda r: -(r.get("ts") or 0),
-        )
-    ][:8]
-
-    # ---- the wire ----------------------------------------------------------
-    #
-    # WEIGHTED TO THE SESSION BEING TRADED. For an Asia note, an item from
-    # Nikkei Asia or the RBA is worth more than a US market wrap, and the
-    # reverse holds at 09:00 ET. Regional items for the session come first, the
-    # rest follow, and nothing is dropped for being from the wrong desk — a
-    # strike on a refinery is an Asia story too.
-    # Sets, because a session can have more than one home region: London's
-    # tape is the UK's AND the euro area's — with only "eu" here, the Bank of
-    # England ranked as foreign news in a London note.
-    homes = {
-        "asia": {"apac", "global"},
-        "london": {"uk", "eu", "global"},
-        "ny": {"us", "global"},
-    }.get(session, {"us", "global"})
-    material = [h for h in wire if h.get("impact") in {"high", "medium"}]
-    local = [h for h in material if h.get("region") in homes]
-    rest = [h for h in material if h.get("region") not in homes]
-    heads = [
-        {
-            "time_et": (h.get("utc") or "")[11:16],
-            "impact": h.get("impact"),
-            "desk": h.get("category"),
-            "region": h.get("region"),
-            "publisher": h.get("publisher"),
-            "title": h.get("title"),
-        }
-        for h in [*local[:24], *rest[:8]]
-    ]
-
     # ---- what each session actually did ------------------------------------
     ranges = {}
     for name, v in ((snap.get("ranges") or {}).get("assets") or {}).items():
@@ -505,6 +1124,15 @@ def build_digest(
         "session_hours": SESSIONS.get(session, SESSIONS["ny"])["hours"],
         "writing_about": ASSETS[resolve_asset(asset)]["instruments"],
         "as_of_et": clock.get("et"),
+        # STATED AS DATA AS WELL AS IN THE PROMPT. The prompt tells the model
+        # how to write; this lets it reason about how far in it is — an Asia
+        # note twenty minutes after the bell and one five hours in are different
+        # notes, and only the second one has a session range worth reading.
+        "session_underway": _prog["underway"],
+        "session_opened_et": _prog.get("opened_et"),
+        "session_opens_et": _prog.get("opens_et"),
+        "minutes_into_session": _prog.get("minutes_in"),
+        "minutes_until_session": _prog.get("minutes_until"),
         "session_phase": (clock.get("phase") or {}).get("label"),
         "sessions_open": [s["label"] for s in (clock.get("sessions") or []) if s.get("open")],
         "london_ny_overlap": clock.get("overlap"),
@@ -549,8 +1177,11 @@ def build_digest(
                             else {}
                         ),
                     }
+                    # Every row, overnight included — see `_vp_reads`. The
+                    # digest carries the three references the spec asks for at
+                    # all hours: last completed RTH, last completed overnight,
+                    # and the profile developing off the session's own anchor.
                     for r in (v.get("rows") or [])
-                    if r.get("key") != "overnight" or session == "ny"
                 ],
                 **_vp_reads(v, session),
             }
@@ -586,6 +1217,10 @@ def build_digest(
             "effr": (rates.get("policy") or {}).get("EFFR", {}).get("rate"),
             "curve": {r["key"]: {"yield": r["value"], "chg_bp": r.get("chg_bp")}
                       for r in (rates.get("curve") or [])},
+            # TIPS yields, Treasury's own daily print: gold's carrying cost, and
+            # the half of a 10Y move that is not inflation.
+            "real": {r["key"]: {"yield": r["value"], "chg_bp": r.get("chg_bp")}
+                     for r in (rates.get("real") or [])},
             "spreads": {r["label"]: f"{r['value']}{r.get('unit', '')}"
                         for r in (rates.get("spreads") or [])},
             "policy_path": rates.get("path") or {},
@@ -608,6 +1243,18 @@ def build_digest(
             for k in ("DXY", "USDJPY", "WTI", "BRENT", "NATGAS", "SILVER", "COPPER")
         },
         "risk_appetite": {k: _brief(_q(quotes, k)) for k in ("BTC", "HYG", "TLT")},
+        # Week and month changes from daily bars: the "WTI +11% on the week"
+        # figures a one-day board cannot give. `week_change` is a plain
+        # difference, which is how a yield's move is said.
+        "multi_day": {
+            r["key"]: {
+                "last": r.get("last"),
+                "week_pct": round(r["week_pct"], 2) if r.get("week_pct") is not None else None,
+                "month_pct": round(r["month_pct"], 2) if r.get("month_pct") is not None else None,
+                "week_change": round(r["week_chg"], 3) if r.get("week_chg") is not None else None,
+            }
+            for r in snap.get("context") or []
+        },
         "gamma_levels": gamma,
         # What each session traded, and where price sits inside each range.
         # The most useful block on the page for a handover read: "London has
@@ -658,9 +1305,16 @@ def build_digest(
             if rsp and rsp.get("rs_day") is not None
             else None,
         },
-        "calendar_ahead_today": ahead,
-        "calendar_just_printed": printed,
-        "headlines": heads,
+        # Scheduled risk from twelve hours back to three days out — data, the
+        # Fed, long-end auctions, bellwether earnings — each with the `id` the
+        # brief's catalyst notes point at.
+        "catalysts": [{k: v for k, v in c.items() if k != "ts"} for c in facts["catalysts"]],
+        # The material wire, each with the `id` the brief picks headlines by.
+        "headlines": [{k: v for k, v in h.items() if k != "url"} for h in facts["headlines"]],
+        # THE TABLES THE PAGE PRINTS, exactly as it prints them. Levels named in
+        # prose should come from these ladders so the words and the table agree.
+        "brief_tables": {k: facts[k] for k in ("snapshot", "ladders", "gamma", "rotation")},
+        "data_gaps": facts["partial"],
     }
 
 
@@ -669,79 +1323,194 @@ def build_digest(
 # --------------------------------------------------------------------------
 
 BIASES = ("bullish", "leaning bullish", "neutral", "leaning bearish", "bearish")
+TONES = ("bear", "bull", "mixed", "neutral")
 
-SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "additionalProperties": False,
-    "required": [
-        "bias", "conviction", "headline", "summary", "drivers",
-        "invalidation", "session_expectation", "levels_to_watch", "risks",
-    ],
-    "properties": {
-        "bias": {
-            "type": "string",
-            "enum": list(BIASES),
-        },
+_STR: dict[str, Any] = {"type": "string"}
+
+
+def _obj(props: dict[str, Any]) -> dict[str, Any]:
+    """A strict-mode object: every property required, nothing extra allowed."""
+    return {
+        "type": "object", "additionalProperties": False,
+        "required": list(props), "properties": props,
+    }
+
+
+def _arr(items: dict[str, Any], lo: int, hi: int) -> dict[str, Any]:
+    return {"type": "array", "minItems": lo, "maxItems": hi, "items": items}
+
+
+_BOOK = {"type": "string", "enum": list(BOOKS)}
+_BIAS = {"type": "string", "enum": list(BIASES)}
+
+# THE BRIEF. Words only: every figure it annotates lives in the facts, and the
+# `id`/`key` fields are how an annotation finds its row. See `sanitize_brief`
+# for what happens to one that points at nothing.
+SCHEMA: dict[str, Any] = _obj({
+    "thesis": {**_STR, "description": "One or two plain sentences: the idea of the day."},
+    "calls": _arr(_obj({
+        "book": _BOOK,
+        "open_bias": _BIAS,
         "conviction": {"type": "integer", "minimum": 1, "maximum": 5},
-        "headline": {"type": "string", "description": "One line, under 100 characters."},
-        "summary": {"type": "string", "description": "Two or three sentences."},
-        "drivers": {
-            "type": "array",
-            "minItems": 3,
-            "maxItems": 6,
-            "items": {
-                "type": "object",
-                "additionalProperties": False,
-                "required": ["point", "evidence", "direction"],
-                "properties": {
-                    "point": {"type": "string"},
-                    "evidence": {
-                        "type": "string",
-                        "description": "The specific figures from the data that support this.",
-                    },
-                    "direction": {"type": "string", "enum": ["bullish", "bearish", "neutral"]},
-                },
-            },
-        },
-        "invalidation": {
-            "type": "array",
-            "minItems": 2,
-            "maxItems": 4,
-            "items": {
-                "type": "object",
-                "additionalProperties": False,
-                "required": ["condition", "flips_to"],
-                "properties": {
-                    "condition": {"type": "string"},
-                    "flips_to": {"type": "string"},
-                },
-            },
-        },
-        "session_expectation": {
-            "type": "string",
-            "description": "How the session is expected to behave: trend, chop, range, "
-                           "squeeze, and where the action is likely to sit.",
-        },
-        "levels_to_watch": {
-            "type": "array",
-            "minItems": 2,
-            "maxItems": 6,
-            "items": {
-                "type": "object",
-                "additionalProperties": False,
-                "required": ["instrument", "level", "why"],
-                "properties": {
-                    "instrument": {"type": "string"},
-                    "level": {"type": "string"},
-                    "why": {"type": "string"},
-                },
-            },
-        },
-        "risks": {"type": "array", "minItems": 1, "maxItems": 4, "items": {"type": "string"}},
-    },
+        "rest_of_day": {**_STR, "description": "Short label, e.g. 'Neutral to leaning bearish'."},
+        "rest_of_day_bias": _BIAS,
+        "wrong_if": {**_STR, "description": "Under 60 characters, using ladder levels."},
+    }), 1, 3),
+    "snapshot_watch": _arr(_obj({"key": _STR, "note": _STR}), 0, 5),
+    "gamma_read": _STR,
+    "catalysts_intro": _STR,
+    "catalyst_notes": _arr(_obj({"id": _STR, "note": _STR}), 0, 14),
+    "reads": _arr(_obj({
+        "book": _BOOK,
+        "regime": _STR,
+        "chain": _arr(_STR, 2, 6),
+        "at_open": _STR,
+        "wrong_if": _STR,
+        "rest_of_day": _STR,
+        "flips": _arr(_STR, 1, 3),
+        "drivers": _arr(_obj({
+            "label": _STR, "text": _STR, "tone": {"type": "string", "enum": list(TONES)},
+        }), 3, 8),
+    }), 1, 3),
+    "rotation_read": _STR,
+    "ratio_reads": _arr(_obj({"id": _STR, "read": _STR}), 0, 8),
+    "rotation_notes": _arr(_STR, 0, 3),
+    "headlines": _arr(_obj({"id": _STR, "books": _arr(_BOOK, 1, 3), "note": _STR}), 0, 6),
+    "cross_asset": _STR,
+    "risks": _arr(_STR, 0, 4),
+})
+
+# What a non-US session can actually do to a US-priced book, and through which
+# channel. One entry per session; the gold line is separate because the answer
+# genuinely differs for it.
+#
+# WHY THIS EXISTS AT ALL. The prompt already named what LEADS each session
+# (SESSIONS["leads"]) and never said how any of it reaches the thing being
+# traded. That is an invitation to treat correlation as cause: handed a Hang
+# Seng print and asked for an NQ call, a model will happily make the Hang Seng
+# the reason. These name the transmission instead, so a regional fact has to
+# earn its way into the call through a channel that exists.
+#
+# THE OWNER'S RULE, KEPT: US macro and the Fed remain the anchor in every
+# session. What changes by session is which OTHER evidence is admissible and how
+# far a break should be believed — never the weight of the US itself.
+TRANSMISSION: dict[str, str] = {
+    "asia": """\
+ASIA REACHES A US BOOK THROUGH THREE CHANNELS, AND ESSENTIALLY NO OTHERS:
+  * USD/JPY and the BoJ — a funding channel, not a sentiment one. Yen strength
+    forces carry unwinds and that lands hardest on the long-duration index.
+  * China growth and policy — PBOC fixes and operations, credit data, stimulus
+    headlines. Real, but second-order for the indices and first-order for
+    commodities and the dollar.
+  * Taiwan and the semiconductor complex — TSMC, export curbs, Taiwan risk.
+    This one hits NQ directly through the semis, not through "Asian equities".
+A Nikkei or Hang Seng move on its own is CORRELATION, not cause: those indices
+are usually reacting to the same US close the reader already knows about. Say
+what Asia did, but only let it move the call when it arrives through one of the
+three channels above.""",
+    "london": """\
+LONDON REACHES A US BOOK MAINLY THROUGH RATES, and it matters more than Asia
+does:
+  * Bunds and Gilts price into the US curve, and the US curve is the discount
+    rate under the index — long duration first. A disorderly Gilt move is a US
+    equity event, as September 2022 demonstrated.
+  * EUR/USD and GBP/USD are the other side of the dollar, so European data
+    moves the DXY that gold and the multinationals are priced against.
+  * European data (CPI, PMIs, ZEW/IFO) and ECB/BoE speakers set the day's rate
+    narrative before New York has an opinion.
+Liquidity is genuinely here, so London is where the overnight range gets
+resolved rather than merely drifted through — and it is positioning ahead of
+the 08:30 ET US print, which remains the actual event.""",
+    "ny": """\
+NEW YORK IS THE SESSION EVERYTHING ELSE WAS POSITIONING FOR. The 08:30 data
+window, the 09:30 open, Fed speakers and the auction cycle are the drivers, and
+the overnight is now the range being broken or defended rather than a separate
+story. Dealer gamma matters most here because the option volume that creates it
+is American.""",
 }
 
-def system_prompt(session: str, asset: str = "all") -> str:
+# Gold's answer to the same question is different enough to state separately.
+TRANSMISSION_GC = """\
+GOLD IS THE ONE BOOK WHERE THE NON-US SESSIONS ARE MORE THAN A TIMEZONE:
+  * LONDON IS THE PHYSICAL MARKET. The LBMA fixes (10:30 and 15:00 London) are
+    real price discovery, not a clock — sizeable flow prints into them.
+  * ASIA IS PHYSICAL DEMAND: Shanghai premiums or discounts to loco London,
+    Indian buying, and central-bank reserve accumulation.
+Weight those higher than you would for an index. But the PRICE DRIVER is still
+US real yields and the dollar: physical flow sets the basis and the depth, the
+front of the US curve sets the level. A gold thesis that never mentions real
+rates is incomplete however busy Shanghai was."""
+
+
+def _thin_tape(session: str) -> str:
+    """What the overnight tape's thinness does to the reading — outside NY only.
+
+    Empty for New York, because every sentence in it is about being away from
+    New York. A note for the session with the deepest book does not need to be
+    told that overnight turnover is light; including it anyway was prompt
+    tonnage the model had to spend attention discarding.
+    """
+    if session == "ny":
+        return ""
+    return """
+Overnight turnover is a fraction of the day's and most of the overnight range is
+positioning rather than information — after-hours US earnings, which print at
+16:00-16:30 ET before Globex has even reopened, routinely move NQ overnight more
+than anything on the regional tape.
+
+THAT THINNESS CHANGES THE READING, structurally rather than narratively: levels
+hold more easily and a break through one is worth less. Weight the gamma walls
+and the developing profile MORE and the macro story LESS, and say explicitly
+when a move looks like position-driven drift rather than a repricing.
+"""
+
+
+def _transmission(session: str, asset: str) -> str:
+    """The session's transmission channels for the book being written about."""
+    block = TRANSMISSION.get(session, TRANSMISSION["ny"])
+    if resolve_asset(asset) == "GC":
+        return f"{block}\n\n{TRANSMISSION_GC}"
+    return block
+
+
+def _live_framing(session: str, prog: dict[str, Any]) -> str:
+    """The paragraph that turns a pre-open template into a note written from here.
+
+    It sits immediately above "Field by field", because that block is what was
+    overriding the clock: the digest always said `as_of_et: 23:28`, and the
+    field spec always said "the call for the start of the session". A model
+    handed both writes to the spec. This reframes the three fields that name the
+    open, in the same breath as the instruction that names them.
+    """
+    label = SESSIONS.get(session, SESSIONS["ny"])["label"]
+    if not prog.get("underway"):
+        return f"""\
+{label.upper()} HAS NOT OPENED YET — it starts at {prog.get('opens_et')} ET, in \
+{prog.get('phrase')}. This is a note written BEFORE the bell, so the fields \
+below mean exactly what they say: the call is for the open, and the levels are \
+the ones price will meet when it gets there.
+"""
+    return f"""\
+{label.upper()} IS ALREADY TRADING — it opened at {prog.get('opened_et')} ET, \
+{prog.get('phrase')} ago, and the digest is a snapshot of RIGHT NOW rather than \
+of the open. WRITE THE NOTE FROM HERE.
+
+Read every field below that names "the open" as "from this moment":
+  * `open_bias` is your call for the REMAINDER of the session, from the current \
+price — not a call for an open that has already happened.
+  * `at_open` describes where price sits NOW, and what this session has already \
+done to get there: the range it has built, which levels it has taken or \
+rejected, whether it is holding above or below them.
+  * `rest_of_day` is the path from this moment to the close.
+
+The session's own developing profile and its range so far are the live \
+evidence; the completed reference windows are what it is being judged against. \
+Do not narrate the open as though it were ahead, and do not state a level as \
+untested if this session has already traded through it.
+"""
+
+
+def system_prompt(session: str, asset: str = "all", prog: dict[str, Any] | None = None) -> str:
     """The instructions, assembled around the session AND the book being traded.
 
     ONE PROMPT PER COMBINATION RATHER THAN ONE GENERIC ONE. A note that says
@@ -807,55 +1576,122 @@ it — and name any confluence between profile levels and gamma walls), the \
 dollar and commodities, the calendar ahead, earnings, expiry and the \
 headlines — context, cited where it changes the read."""
 
-    return f"""You are a markets strategist writing the session note for one \
+    book_list = ", ".join(books_for(asset))
+    return f"""You are a markets strategist writing the pre-session brief for one \
 trader's desk. They trade NQ/QQQ, ES/SPY and GC/GLD futures and ETFs, and they \
 trade the Asia, London and New York sessions.
 
-THIS NOTE IS ABOUT {a["instruments"].upper()}.
+THIS BRIEF IS ABOUT {a["instruments"].upper()}.
   {a["drivers"]}
 
-THIS NOTE IS FOR THE {s["label"].upper()} SESSION, {s["hours"]}.
+THIS BRIEF IS FOR THE {s["label"].upper()} SESSION, {s["hours"]}.
   What leads it: {s["leads"]}
   Handover: {s["handover"]}
   How it usually behaves: {s["character"]}
 
+{_transmission(session, asset)}
+
+US MACRO AND THE FED ARE THE ANCHOR IN EVERY SESSION, INCLUDING THIS ONE. These \
+are US-priced books: NQ and ES are claims on US earnings discounted at US real \
+rates, and gold is priced against the same curve and the same dollar. The \
+session above decides WHICH OTHER EVIDENCE IS ADMISSIBLE and how far to believe \
+a break; it never demotes the US.
+{_thin_tape(session)}
 Write about THAT session. Conditions from the other two are context for it, \
 never the subject — say what they hand over, then say what it means for the \
 one being traded.
 
-THE SAME RULE BINDS THE INSTRUMENT, and more strictly. Every field you \
-return - bias, headline, summary, levels, evidence - is about \
-{a["instruments"].upper()} and nothing else. The other books appear in the \
-data under `other_books_context_only` and they are exactly that: cite them \
-where they change the read on {a["label"]}, since a divergence is worth a \
-sentence, and never issue a call on them. A note scoped to one book that \
-hands back a view on another has answered a question nobody asked.
+THE SAME RULE BINDS THE INSTRUMENT, and more strictly. Calls and reads are \
+issued for {book_list} and nothing else. Where the brief is scoped to one book \
+the others appear under `other_books_context_only`, and they are exactly that: \
+cite them where they change the read, since a divergence is worth a sentence, \
+and never issue a call on them.
 
-Write the note from the data you are given and nothing else. Every claim must \
-rest on a figure that appears in that data, quoted in the evidence field. If \
-the data does not support a view, say the bias is neutral and give a low \
-conviction — a hedged guess presented confidently is worse than no note.
+Write from the data you are given and nothing else. Every claim rests on a \
+figure that appears in that data, and the figure is quoted where the claim is \
+made ("10Y 4.99%, +6bp", not "yields are up"). If the data does not support a \
+view, the call is neutral with a low conviction — a hedged guess presented \
+confidently is worse than no brief.
+
+WHAT THIS DATA DOES NOT HAVE: COT positioning, options open interest or \
+put/call ratios, net gamma notional, ETF flows. Never mention them. A figure \
+that is not in the data does not go in the brief, however standard it would be \
+in one.
 
 WORK THROUGH EVERY BLOCK OF THE DATA BEFORE YOU CONCLUDE. Notes written before \
 this instruction cited the gamma levels and the session ranges and silently \
 ignored sector rotation in three runs out of five — that was not a judgement \
 that it did not matter, it was the block not being read. Each of these answers \
-a different question, and the first four should appear somewhere in the note:
+a different question, and the first four should appear somewhere in the brief:
 
 {must_read}
 
-If a block genuinely says nothing today, leave it out rather than padding the \
-note. What is not acceptable is not looking.
+If a block genuinely says nothing today, leave it out rather than padding. \
+What is not acceptable is not looking.
 
 Read the gamma levels the way a dealer-flow trader does: positive gamma means \
 hedging dampens moves and price tends to pin between the walls; negative gamma \
-means hedging amplifies them and ranges extend. Spot's position relative to \
-the gamma flip is the single most important structural fact on the page. If \
-`expiry` says it is OpEx week, say what that does to the walls.
+means hedging amplifies them and ranges extend. Spot's position against the \
+gamma flip and the expected move is the single most important structural fact \
+on the page. If `expiry` says it is OpEx week, say what that does to the walls.
+
+THE PAGE IS ALREADY BUILT AROUND YOUR WORDS. The snapshot, the levels ladder, \
+the dealer gamma card, the catalyst list, the ratio table and the headline \
+list are printed from `brief_tables`, `catalysts` and `headlines` exactly as \
+the data has them. Do not rebuild those tables in prose. Write the read that \
+sits beside them, point at rows by `key` or `id` where a field asks for one, \
+and take any level you name from `brief_tables.ladders`.
+
+{_live_framing(session, prog or session_progress(session, datetime.now(ET)))}
+Field by field:
+  thesis          One or two plain sentences: the single idea that explains \
+today across the books, and the one figure to watch. It is the page's headline.
+  calls           Exactly one per book in scope. `open_bias` is the call for \
+the start of the session and `conviction` its strength, 1-5. `rest_of_day` is \
+a short label for how the session evolves after the open ("Neutral to leaning \
+bearish", "Leaning bearish, conditional") and `rest_of_day_bias` its \
+direction. `wrong_if` is the price condition that kills the call, under 60 \
+characters.
+  snapshot_watch  Up to five `brief_tables.snapshot` keys that matter most \
+today, each with a few words on why.
+  gamma_read      One or two sentences: what the regime, the flip and the \
+expected move mean for how far today's ranges run.
+  catalysts_intro One or two sentences framing the calendar: what today is \
+positioning for.
+  catalyst_notes  Notes on the catalyst ids that matter, each saying what the \
+print or event means (a miss, a beat, what is priced). Skip the rest.
+  reads           Exactly one per book in scope:
+    regime        The regime in a few words ("Hike repricing / inflation \
+scare", "Real-yield primacy").
+    chain         The macro transmission as 3-5 links from cause to effect, \
+each a few words carrying its figure: "Oil +26% in a month", "Inflation \
+impulse", "Hike priced for tomorrow", "Real yields up (10Y real +17bp wk)", \
+"Discount-rate squeeze on megacaps". Only transmissions the data shows.
+    at_open       Two to four sentences: where price sits against the levels \
+at the start and why that is the lean.
+    wrong_if      The full invalidation: acceptance beyond which ladder level, \
+and what that opens.
+    rest_of_day   Two to four sentences: the conditional path, what breaks \
+next and where it targets.
+    flips         One to three events or prints, not levels, that would \
+reverse the view.
+    drivers       Four to eight rows: a short `label` ("10Y", "DXY", \
+"Rotation", "Vol", "Megacaps", "Geopolitics"), a few words of `text` with the \
+figure, and a `tone` for THIS book: bear, bull, mixed or neutral.
+  rotation_read   One or two sentences on what the ratio table says about the \
+tape: broadening, concentration, defensive, a rate scare.
+  ratio_reads     A few words on each ratio id that matters.
+  rotation_notes  Up to three extra observations with figures (the megacaps, \
+the gold complex).
+  headlines       Three to six headline ids that move price today, each with \
+the books it moves and one line on why.
+  cross_asset     One or two sentences: are the books moving on one driver or \
+diverging, and what to watch because of it.
+  risks           Up to four short ways the read dies.
 
 Be concrete and unhedged in the direction call. Do not use disclaimers, do not \
 mention that you are an AI, and do not recommend position sizes or give \
-financial advice — describe conditions and levels, which is what a desk note \
+financial advice — describe conditions and levels, which is what a desk brief \
 does."""
 
 
@@ -914,26 +1750,154 @@ def extract_json(text: str) -> Any | None:
     return None
 
 
-def valid_report(obj: Any) -> bool:
-    """Does this actually carry a note, whichever mode produced it?
+def _text(v: Any) -> str:
+    return v.strip() if isinstance(v, str) else ""
+
+
+def _texts(v: Any, cap: int) -> list[str]:
+    if not isinstance(v, list):
+        return []
+    return [x.strip() for x in v if isinstance(x, str) and x.strip()][:cap]
+
+
+def _dicts(v: Any) -> list[dict[str, Any]]:
+    return [x for x in v if isinstance(x, dict)] if isinstance(v, list) else []
+
+
+def norm_bias(v: Any) -> str | None:
+    """A bias in the schema's words, from the words a model actually used.
+
+    THE LOOSE MODE ENFORCES NOTHING, and a model that has just been told about a
+    brief full of "Lean Bear" writes "lean bear" back. That is the right call in
+    the wrong spelling, so it is mapped rather than thrown away; anything that
+    is not recognisably one of the five still is.
+    """
+    if not isinstance(v, str):
+        return None
+    t = re.sub(r"[\s_-]+", " ", v.strip().lower())
+    t = re.sub(r"\blean(s|ing)?\b", "leaning", t)
+    t = re.sub(r"\bbear\b", "bearish", t)
+    t = re.sub(r"\bbull\b", "bullish", t)
+    return t if t in BIASES else None
+
+
+def _picks(
+    v: Any, field: str, allowed: set[str], text_field: str, cap: int
+) -> list[dict[str, str]]:
+    """Annotations whose `field` names a real row, first mention wins."""
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for x in _dicts(v):
+        k, text = x.get(field), _text(x.get(text_field))
+        if isinstance(k, str) and k in allowed and k not in seen and text:
+            seen.add(k)
+            out.append({field: k, text_field: text})
+    return out[:cap]
+
+
+def sanitize_brief(obj: Any, facts: dict[str, Any]) -> dict[str, Any] | None:
+    """The model's brief, checked against the facts it is allowed to point at.
 
     THE SCHEMA IS ONLY ENFORCED BY THE PROVIDER IN STRICT MODE, and the weaker
-    modes below do not enforce anything at all — so the shape is checked here
-    rather than assumed. Only the fields the panel dereferences without
-    guarding: a report missing `risks` renders fine, one missing `bias` does
-    not.
+    mode below enforces nothing — so the shape is checked here rather than
+    assumed. And more than the shape: a note on a catalyst id that does not
+    exist, or a call on a book the brief is not about, is dropped here, so the
+    panel can join on ids without guarding every one.
+
+    None when what is left is not a brief: no thesis, a book in scope without a
+    call, or no read at all.
     """
     if not isinstance(obj, dict):
-        return False
-    required = ("bias", "conviction", "headline", "summary", "drivers",
-                "invalidation", "session_expectation", "levels_to_watch")
-    if any(k not in obj for k in required):
-        return False
-    if obj.get("bias") not in BIASES:
-        return False
-    return isinstance(obj.get("drivers"), list) and isinstance(
-        obj.get("levels_to_watch"), list
-    )
+        return None
+    books: list[str] = list(facts.get("books") or BOOKS)
+
+    calls: dict[str, dict[str, Any]] = {}
+    for c in _dicts(obj.get("calls")):
+        book, bias = c.get("book"), norm_bias(c.get("open_bias"))
+        if not isinstance(book, str) or book not in books or book in calls or bias is None:
+            continue
+        try:
+            conviction = int(c.get("conviction") or 0)
+        except (TypeError, ValueError):
+            conviction = 1
+        calls[book] = {
+            "book": book,
+            "open_bias": bias,
+            "conviction": min(5, max(1, conviction)),
+            "rest_of_day": _text(c.get("rest_of_day")),
+            # The chip's colour only — the label beside it carries the words —
+            # so an unreadable direction falls back to the open call's.
+            "rest_of_day_bias": norm_bias(c.get("rest_of_day_bias")) or bias,
+            "wrong_if": _text(c.get("wrong_if")),
+        }
+
+    reads: dict[str, dict[str, Any]] = {}
+    for r in _dicts(obj.get("reads")):
+        book = r.get("book")
+        if not isinstance(book, str) or book not in books or book in reads:
+            continue
+        reads[book] = {
+            "book": book,
+            "regime": _text(r.get("regime")),
+            "chain": _texts(r.get("chain"), 6),
+            "at_open": _text(r.get("at_open")),
+            "wrong_if": _text(r.get("wrong_if")),
+            "rest_of_day": _text(r.get("rest_of_day")),
+            "flips": _texts(r.get("flips"), 3),
+            "drivers": [
+                {
+                    "label": _text(d.get("label")),
+                    "text": _text(d.get("text")),
+                    "tone": d.get("tone") if d.get("tone") in TONES else "neutral",
+                }
+                for d in _dicts(r.get("drivers"))[:8]
+                if _text(d.get("label"))
+            ],
+        }
+
+    thesis = _text(obj.get("thesis"))
+    if not thesis or not reads or any(b not in calls for b in books):
+        return None
+
+    headline_ids = {h["id"] for h in facts.get("headlines") or []}
+    headlines: list[dict[str, Any]] = []
+    for h in _dicts(obj.get("headlines")):
+        hid = h.get("id")
+        if not isinstance(hid, str) or hid not in headline_ids:
+            continue
+        if any(x["id"] == hid for x in headlines):
+            continue
+        # "Gold" is what a model writes for GC more often than not.
+        named = {str(x).strip().upper().replace("GOLD", "GC") for x in h.get("books") or []
+                 } if isinstance(h.get("books"), list) else set()
+        headlines.append({
+            "id": hid, "books": [b for b in BOOKS if b in named], "note": _text(h.get("note")),
+        })
+
+    return {
+        "thesis": thesis,
+        "calls": [calls[b] for b in books],
+        "snapshot_watch": _picks(
+            obj.get("snapshot_watch"), "key",
+            {row["key"] for row in facts.get("snapshot") or []}, "note", 5,
+        ),
+        "gamma_read": _text(obj.get("gamma_read")),
+        "catalysts_intro": _text(obj.get("catalysts_intro")),
+        "catalyst_notes": _picks(
+            obj.get("catalyst_notes"), "id",
+            {c["id"] for c in facts.get("catalysts") or []}, "note", 14,
+        ),
+        "reads": [reads[b] for b in books if b in reads],
+        "rotation_read": _text(obj.get("rotation_read")),
+        "ratio_reads": _picks(
+            obj.get("ratio_reads"), "id",
+            {r["id"] for r in (facts.get("rotation") or {}).get("ratios") or []}, "read", 8,
+        ),
+        "rotation_notes": _texts(obj.get("rotation_notes"), 3),
+        "headlines": headlines[:6],
+        "cross_asset": _text(obj.get("cross_asset")),
+        "risks": _texts(obj.get("risks"), 4),
+    }
 
 
 def loose_ask(messages: list[dict[str, str]]) -> dict[str, str]:
@@ -951,15 +1915,27 @@ def loose_ask(messages: list[dict[str, str]]) -> dict[str, str]:
             messages[-1]["content"]
             + "\n\nReturn ONLY a JSON object, no prose around it, exactly this shape:\n"
             + """{
-  "bias": one of "bullish" | "leaning bullish" | "neutral" | "leaning bearish" | "bearish",
-  "conviction": integer 1-5,
-  "headline": "one line, under 100 characters",
-  "summary": "two or three sentences",
-  "drivers": [ { "point": "...", "evidence": "the figures from the data",
-                 "direction": "bullish" | "bearish" | "neutral" } ],   // 3-6 of them
-  "invalidation": [ { "condition": "...", "flips_to": "..." } ],       // 2-4
-  "session_expectation": "how the session should behave: trend, chop, range, squeeze",
-  "levels_to_watch": [ { "instrument": "NQ", "level": "29,500", "why": "..." } ],
+  "thesis": "one or two sentences",
+  "calls": [ { "book": "NQ" | "ES" | "GC",
+               "open_bias": one of "bullish" | "leaning bullish" | "neutral" |
+                           "leaning bearish" | "bearish",
+               "conviction": integer 1-5,
+               "rest_of_day": "short label", "rest_of_day_bias": one of the same five,
+               "wrong_if": "under 60 characters" } ],            // one per book in scope
+  "snapshot_watch": [ { "key": "US10Y", "note": "..." } ],       // 0-5
+  "gamma_read": "...",
+  "catalysts_intro": "...",
+  "catalyst_notes": [ { "id": "c2", "note": "..." } ],
+  "reads": [ { "book": "NQ", "regime": "...", "chain": [ "...", "..." ],
+               "at_open": "...", "wrong_if": "...", "rest_of_day": "...",
+               "flips": [ "..." ],
+               "drivers": [ { "label": "10Y", "text": "...",
+                              "tone": "bear" | "bull" | "mixed" | "neutral" } ] } ],
+  "rotation_read": "...",
+  "ratio_reads": [ { "id": "QQQ/IWM", "read": "..." } ],
+  "rotation_notes": [ "..." ],
+  "headlines": [ { "id": "h3", "books": [ "NQ", "GC" ], "note": "..." } ],
+  "cross_asset": "...",
   "risks": [ "..." ]
 }"""
         ),
@@ -1015,6 +1991,10 @@ def generate(
         "session_label": SESSIONS[sess]["label"],
         "asset": book,
         "asset_label": ASSETS[book]["label"],
+        # "brief" since 2026-09-16. Reports stored before then have no format
+        # and the old note's shape, and the panel still renders those.
+        "format": "brief",
+        "facts": None,
         "report": None,
         "error": None,
         "digest": None,
@@ -1029,19 +2009,36 @@ def generate(
         )
         return base
 
-    digest = build_digest(snap, sess, book)
+    facts = build_facts(snap, sess, book)
+    digest = build_digest(snap, sess, book, facts)
     base["digest"] = digest
+    base["facts"] = facts
+    # ONE progress reading shared by the prompt and the envelope, taken off the
+    # snapshot's clock. Computing it twice would let a generation that straddles
+    # 09:30 be instructed one way and labelled the other.
+    prog = session_progress(sess, _now_et(snap))
+    # Stored so the panel can label the note the way it was written — a call
+    # made from mid-session printed under "At the open" is the same mistake in
+    # the UI that the prompt just stopped making.
+    base["session_underway"] = prog["underway"]
 
     messages = [
-        {"role": "system", "content": system_prompt(sess, book)},
+        {"role": "system", "content": system_prompt(sess, book, prog)},
         {
             "role": "user",
             "content": (
                 f"Terminal snapshot at {digest.get('as_of_et')} "
                 f"({digest.get('session_phase')}).\n\n"
                 f"```json\n{json.dumps(digest, indent=1, default=str)}\n```\n\n"
-                f"Write the note for the {SESSIONS[sess]['label']} session, "
-                f"about {ASSETS[book]['instruments']}."
+                f"Write the brief for the {SESSIONS[sess]['label']} session, "
+                + (
+                    f"which opened {prog['phrase']} ago and is trading now — "
+                    "write it from the current price, not for the open. "
+                    if prog["underway"]
+                    else f"which opens in {prog['phrase']}. "
+                )
+                + f"About {ASSETS[book]['instruments']}. "
+                f"Books in scope: {', '.join(facts['books'])}."
             ),
         },
     ]
@@ -1120,7 +2117,11 @@ def generate(
             # `finish_reason=length` at 6,000 — a reasoning model handed the
             # full digest deliberates for thousands of tokens before it writes
             # anything, and a truncated answer costs the whole attempt.
-            "max_tokens": 12000,
+            #
+            # And to 16,000 for the brief (2026-09-16): its answer is about three
+            # times the old note's — a thesis, then a call and a full read per
+            # book — and the reasoning still comes out of the same budget.
+            "max_tokens": 16000,
             # Ask for a short think rather than none: these models reason by
             # default and excluding it outright degrades the answer, but the
             # note does not need three thousand tokens of deliberation.
@@ -1206,19 +2207,18 @@ def generate(
             })
             base["raw"] = content[:2000]
             continue
-        if not valid_report(report):
-            missing = [k for k in ("bias", "conviction", "headline", "summary",
-                                   "drivers", "invalidation", "session_expectation",
-                                   "levels_to_watch") if k not in report]
+        brief = sanitize_brief(report, facts)
+        if brief is None:
             attempts.append({
                 "model": candidate, "mode": mode,
-                "error": f"JSON did not match the report shape (missing: {missing or 'bias enum'})",
+                "error": "JSON did not match the brief shape (needs a thesis, a readable "
+                         f"call for each of {', '.join(facts['books'])}, and a read)",
             })
             base["raw"] = content[:2000]
             continue
 
         base["ok"] = True
-        base["report"] = report
+        base["report"] = brief
         base["mode"] = mode
         # THE MODEL THAT ANSWERED, not the one asked for. A note written by the
         # second choice has to say so — "which model wrote this" is half the
@@ -1283,6 +2283,13 @@ def history(limit: int = 20) -> list[dict[str, Any]]:
         except (OSError, ValueError):
             continue
         r = d.get("report") or {}
+        bias, conviction, headline = r.get("bias"), r.get("conviction"), r.get("headline")
+        if d.get("format") == "brief":
+            # A brief carries a call per book; the list shows the first, which
+            # is the only one when the brief is scoped to a single book.
+            first = (r.get("calls") or [{}])[0]
+            bias, conviction = first.get("open_bias"), first.get("conviction")
+            headline = r.get("thesis")
         out.append({
             "id": d.get("id"),
             "et_label": d.get("et_label"),
@@ -1293,9 +2300,9 @@ def history(limit: int = 20) -> list[dict[str, Any]]:
             "session_label": d.get("session_label"),
             "asset": d.get("asset"),
             "asset_label": d.get("asset_label"),
-            "bias": r.get("bias"),
-            "conviction": r.get("conviction"),
-            "headline": r.get("headline"),
+            "bias": bias,
+            "conviction": conviction,
+            "headline": headline,
         })
     return out
 
@@ -1313,6 +2320,30 @@ def load(report_id: str) -> dict[str, Any] | None:
 def latest() -> dict[str, Any] | None:
     h = history(1)
     return load(h[0]["id"]) if h and h[0].get("id") else None
+
+
+def remove(report_id: str) -> bool:
+    """Delete one stored report. True if a file went, False if there was none.
+
+    `os.path.basename` for the same reason `load` uses it: the id arrives from
+    the panel and is pasted into a path, so a traversal has to be impossible by
+    construction rather than by trusting the caller. The route validates the
+    shape as well — two locks on a door that only this app's own history list
+    ever knocks on, because the cost of being wrong here is deleting something
+    outside REPORTS_DIR.
+
+    NOT RECOVERABLE, and deliberately not softened with a trash folder. The
+    reports directory is already a KEEP-capped ring buffer that drops its oldest
+    entries without ceremony; a second, quieter copy of the thing the owner
+    just asked to be gone would be a surprise, not a safety net. The confirm
+    step lives in the UI, where the person is.
+    """
+    path = os.path.join(REPORTS_DIR, f"{os.path.basename(report_id)}.json")
+    try:
+        os.remove(path)
+    except OSError:
+        return False
+    return True
 
 
 def configured() -> dict[str, Any]:

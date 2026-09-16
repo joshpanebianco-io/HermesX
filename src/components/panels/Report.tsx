@@ -1,9 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import type { Bias, Report as ReportT, ReportAsset, ReportSession } from "@/types/terminal";
+import type {
+  Bias,
+  Report as ReportT,
+  ReportAsset,
+  ReportBody,
+  ReportSession,
+} from "@/types/terminal";
 import type { ReportController } from "@/lib/useReport";
+import { Brief } from "@/components/panels/Brief";
 import { Module } from "@/components/ui/Module";
+import { biasHue } from "@/lib/bias";
 import { cn } from "@/lib/cn";
 
 /**
@@ -22,14 +30,6 @@ import { cn } from "@/lib/cn";
  * with a mark on a track, because "leaning bearish" is a point on a line and a
  * coloured pill would lose the distance between it and "bearish".
  */
-
-function biasHue(b: Bias): string {
-  if (b === "bullish") return "var(--call)";
-  if (b === "leaning bullish") return "var(--call-dte)";
-  if (b === "bearish") return "var(--put)";
-  if (b === "leaning bearish") return "var(--put-dte)";
-  return "var(--ink-3)";
-}
 
 /**
  * Which session the note is written for.
@@ -91,8 +91,11 @@ export function Report({
   viewing,
   generate,
   open,
+  discard,
 }: ReportController) {
   const [showDigest, setShowDigest] = useState(false);
+  /** Which row is asking "Delete this report?" — one at a time. */
+  const [confirming, setConfirming] = useState<string | null>(null);
   const rep = feed?.latest ?? null;
   const enabled = feed?.config?.enabled ?? false;
 
@@ -179,7 +182,14 @@ export function Report({
           ) : rep.error ? (
             <Failed rep={rep} />
           ) : rep.report ? (
-            <Body rep={rep} onDigest={() => setShowDigest((v) => !v)} showDigest={showDigest} />
+            <>
+              {rep.format === "brief" && rep.facts ? <Brief rep={rep} /> : <Body rep={rep} />}
+              <Provenance
+                rep={rep}
+                showDigest={showDigest}
+                onDigest={() => setShowDigest((v) => !v)}
+              />
+            </>
           ) : (
             <Empty />
           )}
@@ -196,12 +206,12 @@ export function Report({
           ) : (
             <ul>
               {feed.history.map((h) => (
-                <li key={h.id}>
+                <li key={h.id} className="group relative">
                   <button
                     type="button"
                     onClick={() => open(h.id)}
                     className={cn(
-                      "hit flex w-full flex-col items-start gap-0.5 px-3 py-1.5 text-left",
+                      "hit flex w-full flex-col items-start gap-0.5 py-1.5 pr-7 pl-3 text-left",
                       (viewing ?? rep?.id) === h.id && "bg-ink/[0.06]",
                     )}
                   >
@@ -233,6 +243,56 @@ export function Report({
                       </span>
                     )}
                   </button>
+                  {/*
+                    * DELETE IS A SIBLING OF THE ROW BUTTON, NOT A CHILD OF IT.
+                    * A button inside a button is invalid HTML and browsers
+                    * resolve it by dropping one of them, so the row reserves
+                    * `pr-7` and this sits in the gutter it leaves.
+                    *
+                    * IT ASKS FIRST, INLINE. `window.confirm` would do the job
+                    * and is the wrong tool twice over: a modal dialog blocks
+                    * the whole page, and the thing being confirmed is a row you
+                    * can no longer see behind it. This keeps the row on screen
+                    * and puts the question over it. Deleting is permanent —
+                    * there is no trash folder on the collector.
+                    */}
+                  {confirming === h.id ? (
+                    <div className="absolute inset-0 flex items-center gap-1.5 bg-surface-2 px-3">
+                      <span className="mr-auto text-[10px] text-ink-3">Delete this report?</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          discard(h.id);
+                          setConfirming(null);
+                        }}
+                        className="hit rounded px-1.5 py-0.5 text-[10px] font-semibold text-warn"
+                      >
+                        Delete
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirming(null)}
+                        className="hit rounded px-1.5 py-0.5 text-[10px] text-ink-3"
+                      >
+                        Keep
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirming(h.id)}
+                      title="Delete this report"
+                      aria-label={`Delete the report from ${h.et_label}`}
+                      /*
+                       * Revealed on hover, but focus-visible brings it back for
+                       * the keyboard — an opacity-0 control that only a mouse
+                       * can summon is one a keyboard can tab to and not see.
+                       */
+                      className="hit absolute top-1.5 right-1 rounded px-1 text-[12px] leading-none text-ink-4 opacity-0 group-hover:opacity-100 hover:text-warn focus-visible:opacity-100"
+                    >
+                      ×
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -292,7 +352,7 @@ function Working() {
       <div className="fig text-[11.5px] text-ink-2">Reading the terminal…</div>
       <p className="mt-1 text-[10.5px] leading-relaxed text-ink-4">
         The board, the gamma structure, the session ranges, the curve, rotation, the calendar
-        and the wire go over in one request.
+        and the wire go over in one request; a thesis, a call and a read per book come back.
       </p>
       <p className="mx-auto mt-2 max-w-[46ch] text-[10.5px] leading-relaxed text-ink-4">
         On the free tier this can take a couple of minutes. The free pools are shared with
@@ -331,16 +391,13 @@ function Failed({ rep }: { rep: ReportT }) {
 
 /* ---------------------------------------------------------------- the note */
 
-function Body({
-  rep,
-  showDigest,
-  onDigest,
-}: {
-  rep: ReportT;
-  showDigest: boolean;
-  onDigest: () => void;
-}) {
-  const r = rep.report!;
+/**
+ * The note as it was before the brief (2026-09-16). Kept so the reports stored
+ * before then still render in Past calls — they carry no facts to build a
+ * brief from, and redrawing them as one would invent the tables.
+ */
+function Body({ rep }: { rep: ReportT }) {
+  const r = rep.report as ReportBody;
   const hue = biasHue(r.bias);
 
   return (
@@ -451,7 +508,27 @@ function Body({
         </Section>
       )}
 
-      {/* ---- provenance ------------------------------------------------ */}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- provenance */
+
+/**
+ * Who wrote it, when, and exactly what it was shown. Under the brief and the
+ * old note alike, because provenance is what makes either one checkable later.
+ */
+function Provenance({
+  rep,
+  showDigest,
+  onDigest,
+}: {
+  rep: ReportT;
+  showDigest: boolean;
+  onDigest: () => void;
+}) {
+  return (
+    <>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-ring/50 bg-surface-2/30 px-4 py-2 text-[9.5px] text-ink-4">
         <span className="fig">{rep.model}</span>
         <span aria-hidden>·</span>
@@ -480,7 +557,7 @@ function Body({
           {JSON.stringify(rep.digest, null, 1)}
         </pre>
       )}
-    </div>
+    </>
   );
 }
 

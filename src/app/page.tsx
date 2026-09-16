@@ -75,6 +75,17 @@ export default async function Page({
   const sp = await searchParams;
   const initialTab =
     sp.tab === "report" ? "report" : sp.tab === "settings" ? "settings" : "terminal";
+  /*
+   * WHETHER THE URL ASKED AT ALL, which is not the same question as which tab
+   * it asked for. `?tab=terminal` and a bare `/` both resolve to "terminal"
+   * above, and for a while both were also treated as saying NOTHING — so the
+   * remembered tab won, and the desktop shortcut opened on whatever you last
+   * looked at. Landing on the report after a double-click is the wrong first
+   * frame: the shortcut says "show me the terminal", and the note is a place
+   * you go, not a place you arrive.
+   */
+  const initialTabPinned =
+    sp.tab === "terminal" || sp.tab === "report" || sp.tab === "settings";
   const theme = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
   const [initial, initialReport] = await Promise.all([getInitial(), getReport()]);
   return (
@@ -82,6 +93,7 @@ export default async function Page({
       initial={initial}
       initialReport={initialReport}
       initialTab={initialTab}
+      initialTabPinned={initialTabPinned}
       initialTheme={theme}
     />
   );

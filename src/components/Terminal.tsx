@@ -63,11 +63,14 @@ export function Terminal({
   initial,
   initialReport,
   initialTab = "terminal",
+  initialTabPinned,
   initialTheme = DEFAULT_THEME,
 }: {
   initial: TerminalData;
   initialReport: ReportFeed | null;
   initialTab?: Tab;
+  /** The URL named a tab — see `urlPinned` below. */
+  initialTabPinned?: boolean;
   initialTheme?: ThemeChoice;
 }) {
   // Held here rather than in Settings so the tab can be left and returned to
@@ -108,7 +111,14 @@ export function Terminal({
     oneOf("terminal", "report", "settings"),
   );
   const [tab, setTabState] = useState<Tab>(initialTab);
-  const urlPinned = useRef(initialTab !== "terminal");
+  /*
+   * INFERRING THIS FROM THE TAB ITSELF IS WHAT BROKE IT. `initialTab !== "terminal"`
+   * reads a pin off the destination, which cannot tell `?tab=terminal` — an
+   * instruction — from a bare `/`, which is not one. Both resolve to "terminal",
+   * so both fell through to the remembered tab, and the desktop shortcut opened
+   * on the report. The server knows which of the two it saw; it says so.
+   */
+  const urlPinned = useRef(initialTabPinned ?? initialTab !== "terminal");
   useEffect(() => {
     if (!urlPinned.current && storedTab !== tab) setTabState(storedTab);
     // Runs when storage lands after mount; a later user click owns it from

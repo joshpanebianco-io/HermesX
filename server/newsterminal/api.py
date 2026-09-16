@@ -171,6 +171,28 @@ def report_one(report_id: str) -> dict[str, Any]:
     return {"config": report_mod.configured(), "latest": report_mod.load(report_id)}
 
 
+@app.delete("/api/report/{report_id}")
+def report_delete(report_id: str) -> dict[str, Any]:
+    """Drop one stored report, and hand back the list without it.
+
+    The refreshed `history` and `latest` come back in the same response rather
+    than leaving the panel to re-fetch: deleting the report you are currently
+    reading has to leave something coherent on screen, and a second round trip
+    is a window in which the list and the open report disagree.
+
+    A 404 would be the pedantic answer for an id that is already gone, but
+    "gone" is exactly the state the caller asked for — a double-click on the
+    confirm should not raise. `deleted` says which actually happened.
+    """
+    gone = report_mod.remove(report_id)
+    return {
+        "config": report_mod.configured(),
+        "latest": report_mod.latest(),
+        "history": report_mod.history(),
+        "deleted": gone,
+    }
+
+
 @app.post("/api/report")
 def report_generate(
     label: str = Query("manual", max_length=40),

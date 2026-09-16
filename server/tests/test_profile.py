@@ -91,19 +91,47 @@ def test_new_york_reads_all_three_with_a_0930_anchor() -> None:
     assert ws["dev"]["label"].endswith("09:30")
 
 
-def test_asia_evening_reads_prev_rth_plus_an_1800_anchor() -> None:
+def test_asia_evening_reads_all_three_with_an_1800_anchor() -> None:
     ws = {w["key"]: w for w in windows(at(2026, 8, 31, 21, 30))}  # Mon 21:30 ET
-    assert set(ws) == {"prev_rth", "dev"}  # the overnight IS the developing
+    assert set(ws) == {"prev_rth", "overnight", "dev"}
     assert ws["prev_rth"]["start"] == at(2026, 8, 31, 9, 30)  # today's cash
+    # The LAST COMPLETED overnight, which is the night before — tonight's is
+    # the developing row and must not be counted twice.
+    assert ws["overnight"]["start"] == at(2026, 8, 28, 18, 0)  # Friday evening
+    assert ws["overnight"]["end"] == at(2026, 8, 31, 9, 30)
     assert ws["dev"]["start"] == at(2026, 8, 31, 18, 0)
     assert ws["dev"]["label"].endswith("18:00")
 
 
 def test_london_morning_keeps_yesterdays_1800_anchor() -> None:
     ws = {w["key"]: w for w in windows(at(2026, 9, 1, 4, 0))}  # Tue 04:00 ET
-    assert set(ws) == {"prev_rth", "dev"}
+    assert set(ws) == {"prev_rth", "overnight", "dev"}
     assert ws["prev_rth"]["start"] == at(2026, 8, 31, 9, 30)
+    assert ws["overnight"]["start"] == at(2026, 8, 28, 18, 0)
+    assert ws["overnight"]["end"] == at(2026, 8, 31, 9, 30)
     assert ws["dev"]["start"] == at(2026, 8, 31, 18, 0)  # yesterday evening
+
+
+def test_overnight_row_never_overlaps_the_developing_one() -> None:
+    """The two must not describe the same bars, at any hour of the clock.
+
+    This is the failure the old two-row design was avoiding, and the reason the
+    row is the last COMPLETED overnight rather than simply "18:00 yesterday":
+    get that wrong in Asia and the reference window and the live window are the
+    same auction wearing two names.
+    """
+    for now in (
+        at(2026, 8, 31, 19, 0), at(2026, 8, 31, 23, 30),   # Globex evening
+        at(2026, 9, 1, 2, 0), at(2026, 9, 1, 8, 45),       # London / pre-NY
+        at(2026, 9, 1, 11, 0), at(2026, 9, 1, 15, 59),     # NY RTH
+        at(2026, 9, 6, 23, 0),                             # Sunday reopen
+    ):
+        ws = {w["key"]: w for w in windows(now)}
+        on, dev = ws.get("overnight"), ws.get("dev")
+        assert on is not None, now
+        if dev is None:
+            continue
+        assert on["end"] <= dev["start"], now
 
 
 def test_post_close_lull_has_nothing_developing() -> None:

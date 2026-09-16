@@ -34,8 +34,9 @@ from typing import Any
 from ..config import GEX_ASSETS, GEXYGEN_API, UA
 from ..http import SourceStatus, fetch
 
-# The only keys read out of levels.txt. Everything else the file carries —
-# max pain, the ladder, the expected move — is deliberately dropped.
+# The only LEVELS read out of levels.txt. Everything else the file carries —
+# max pain, the ladder — is deliberately dropped. The expected-move band rides
+# along beside spot rather than in this table (see `parse_levels`).
 WANTED = {
     "FLIP": ("flip", "Gamma flip", "flip"),
     "CALL_WALL": ("call_1", "Call wall", "call"),
@@ -53,7 +54,7 @@ def parse_levels(text: str) -> dict[str, Any]:
     """levels.txt → the seven levels, spot, and the header's regime. Pure."""
     out: dict[str, Any] = {
         "levels": [], "spot": None, "regime": None, "book": None,
-        "generated_unix": None, "note": None,
+        "generated_unix": None, "note": None, "em_hi": None, "em_lo": None,
     }
     if not text or text.lstrip().startswith("# unknown") or "# no snapshot" in text:
         out["note"] = text.strip().lstrip("# ") or "empty response"
@@ -76,6 +77,14 @@ def parse_levels(text: str) -> dict[str, Any]:
 
     out["spot"] = raw.get("SPOT")
     out["generated_unix"] = raw.get("GENERATED_UNIX")
+    # THE EXPECTED MOVE COMES ALONG, FOR THE SAME REASON SPOT DOES. It is not an
+    # eighth level and the gamma panel never draws it; the session brief needs
+    # it to say which walls sit inside today's priced range and which are a
+    # stretch. Read rather than derived, because GEXYGEN prices it off the same
+    # chain its walls come from, and a VXN-based estimate drawn beside those
+    # walls would be a second engine disagreeing with the first.
+    out["em_hi"] = raw.get("EM_HI")
+    out["em_lo"] = raw.get("EM_LO")
 
     spot = out["spot"]
     for key, (slug, label, side) in WANTED.items():
@@ -101,6 +110,47 @@ def parse_levels(text: str) -> dict[str, Any]:
     return out
 
 
+def _why(err: str | None, code: int | None) -> str:
+    """A failed fetch, in words that belong on a panel.
+
+    GEXYGEN BEING ABSENT IS THE NORMAL STATE THIS TERMINAL IS DESIGNED AROUND,
+    so it has to READ like a state and not like a crash. What urllib hands up
+    for a closed port is `[WinError 10061] No connection could be made because
+    the target machine actively refused it` — the operating system explaining a
+    socket to somebody who is debugging a socket. Pasted onto the gamma panel
+    and into the brief's partial-data banner, it reads as this terminal being
+    broken BY GEXYGEN's absence, which is the one impression it must never
+    give: the two are separate projects and every other panel is fine.
+
+    So the transport detail is translated here, once, at the layer that knows
+    what a refused connection to THIS upstream actually means. http.py keeps
+    handing up the raw text, because every other source wants it: a refused
+    connection to a publisher's RSS is news, and there is no plain sentence to
+    swap it for.
+
+    NO SUBJECT IN THESE PHRASES, because every surface supplies its own and two
+    would be one too many. The collector prints them under a row already
+    labelled `GEXYGEN levels`; the gamma panel sits them above "These come from
+    GEXYGEN's compute service"; the brief's banner prefixes "GEXYGEN gamma
+    levels unavailable". Each reads as a sentence with "not running" dropped in,
+    and as "GEXYGEN gamma levels unavailable (GEXYGEN is not running)" without.
+    """
+    text = (err or "").strip()
+    low = text.lower()
+    # A status means the service ANSWERED, which is a different fact entirely —
+    # it is up, and it said no.
+    if code:
+        return f"answered HTTP {code}"
+    # Both spellings: Windows says "actively refused it", POSIX "Connection
+    # refused". The numeric form is matched too, since the WinError prefix is
+    # the part that survives when something upstream trims the message.
+    if "refused" in low or "10061" in low:
+        return "not running"
+    if "timed out" in low or "timeout" in low:
+        return "did not answer in time"
+    return text or "unreachable"
+
+
 def collect(book: str = "front") -> tuple[dict[str, Any], SourceStatus]:
     """Levels for every configured asset. GEXYGEN absent is a normal state."""
     st = SourceStatus("GEXYGEN levels")
@@ -111,14 +161,19 @@ def collect(book: str = "front") -> tuple[dict[str, Any], SourceStatus]:
 
     assets: dict[str, Any] = {}
     errors: list[str] = []
+    # The distinct transport reasons seen this pass. One of them, shared by
+    # every asset, means the service is the subject rather than any book.
+    causes: set[str] = set()
     for a in GEX_ASSETS:
         url = f"{GEXYGEN_API.rstrip('/')}/api/levels.txt?asset={a}&book={book}"
         # ttl 0: never serve a cached gamma level. A stale wall is worse than
         # no wall, and this upstream is on localhost — there is nothing to save.
         r = fetch(url, key=f"gex_{a}_{book}", ttl_sec=0.0, ua=UA, timeout=8, stale_ok=False)
         if not r.ok:
-            errors.append(f"{a}: {r.error}")
-            assets[a] = {"ok": False, "error": r.error, "levels": []}
+            why = _why(r.error, r.status)
+            causes.add(why)
+            errors.append(f"{a}: {why}")
+            assets[a] = {"ok": False, "error": why, "levels": []}
             continue
         parsed = parse_levels(r.text)
         ok = bool(parsed["levels"])
@@ -136,7 +191,13 @@ def collect(book: str = "front") -> tuple[dict[str, Any], SourceStatus]:
     st.source = "live" if st.ok else "unavailable"
     st.age_min = 0.0 if st.ok else None
     if errors:
-        st.error = errors[0]
+        # NOTHING ANSWERED, ALL FOR THE SAME REASON -> THE SERVICE IS THE
+        # SUBJECT, NOT A BOOK. `errors[0]` is asset-prefixed, so the brief's
+        # banner would read "GEXYGEN gamma levels unavailable (NQ: GEXYGEN is
+        # not running)" — which invites the reader to wonder what is special
+        # about NQ, when the answer is nothing: there was no one to ask.
+        whole = not st.ok and len(causes) == 1 and len(errors) == len(GEX_ASSETS)
+        st.error = next(iter(causes)) if whole else errors[0]
         if not st.ok:
             st.notes.append(f"Is GEXYGEN running? Expected at {GEXYGEN_API}")
     if st.ok:
