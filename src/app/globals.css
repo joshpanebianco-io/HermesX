@@ -719,7 +719,8 @@
     .tick,
     .wire-in,
     .live-dot,
-    .hermes-mark {
+    .hermes-mark,
+    .report-loader .hermes-mark {
       animation: none;
     }
     /* The wash is a hue drift with no geometry, but the glitch on the same
@@ -961,6 +962,48 @@
     animation:
       hermes-mark 5.6s ease-in-out infinite,
       hermes-glitch 60s linear infinite;
+  }
+
+  /*
+   * THE LOADER GLITCHES EVERY TEN SECONDS, NOT ONCE A MINUTE (owner,
+   * 2026-09-16). Same choreography as hermes-glitch, but the keyframes are
+   * PERCENTAGES of the cycle, so simply shortening the duration to 10s would
+   * shrink the 600ms burst to 100ms and it would read as a flicker, not a
+   * glitch. The stops are scaled x6 instead, which keeps the burst at 600ms
+   * on the shorter timeline. The header keeps its 60s: a mark you glance at
+   * once a minute and one you stare at for three minutes are different jobs.
+   */
+  @keyframes hermes-glitch-10s {
+    0% {
+      transform: translateX(0);
+      clip-path: none;
+      animation-timing-function: steps(1, end);
+    }
+    1.5% {
+      transform: translateX(-2px);
+      clip-path: inset(12% 0 54% 0);
+      animation-timing-function: steps(1, end);
+    }
+    3% {
+      transform: translateX(2.5px);
+      clip-path: inset(58% 0 8% 0);
+      animation-timing-function: steps(1, end);
+    }
+    4.5% {
+      transform: translateX(-1px);
+      clip-path: inset(30% 0 38% 0);
+      animation-timing-function: steps(1, end);
+    }
+    6%,
+    100% {
+      transform: translateX(0);
+      clip-path: none;
+    }
+  }
+  .report-loader .hermes-mark {
+    animation:
+      hermes-mark 5.6s ease-in-out infinite,
+      hermes-glitch-10s 10s linear infinite;
   }
 }
 

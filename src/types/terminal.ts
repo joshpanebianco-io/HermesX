@@ -28,8 +28,8 @@ export type Impact = "high" | "medium" | "low";
 /** Which desk's session a source or a release belongs to. */
 export type Region = "us" | "uk" | "eu" | "apac" | "global" | "other";
 
-/** The four trading windows the terminal segments on, in ET. */
-export type SessionKey = "asia" | "london" | "preny" | "ny" | "closed";
+/** The five trading windows the terminal segments on, in ET. */
+export type SessionKey = "asia" | "london" | "euro_mid" | "preny" | "ny" | "closed";
 
 export interface Quote {
   key: string;
@@ -207,7 +207,7 @@ export interface SourceStatus {
 }
 
 export interface SessionRange {
-  key: "asia" | "london" | "preny" | "ny";
+  key: "asia" | "london" | "euro_mid" | "preny" | "ny";
   label: string;
   ok: boolean;
   high: number | null;
@@ -221,6 +221,10 @@ export interface SessionRange {
   bars: number;
   start_et: string | null;
   end_et: string | null;
+  /** The calendar day the window STARTED on — Asia begins the evening before. */
+  date?: string | null;
+  /** "live" while the clock is still inside this window, else "complete". */
+  status?: "live" | "complete";
 }
 
 export interface EarningsRow {
@@ -449,6 +453,12 @@ export interface BriefCall {
   rest_of_day: string;
   rest_of_day_bias: Bias;
   wrong_if: string;
+  /**
+   * Why the bias is what it is, two to four bullets each prefixed with its
+   * layer (Macro / Positioning / Structure / Session). Optional because notes
+   * stored before 2026-09-16 predate the field.
+   */
+  why?: string[];
 }
 
 export interface BriefRead {

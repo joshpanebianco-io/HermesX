@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type {
   Bias,
   Report as ReportT,
@@ -13,6 +13,7 @@ import { Brief } from "@/components/panels/Brief";
 import { Module } from "@/components/ui/Module";
 import { biasHue } from "@/lib/bias";
 import { cn } from "@/lib/cn";
+import { HERMES_MARK_D } from "@/lib/hermesMark";
 
 /**
  * The session report — a model's read of the whole terminal.
@@ -92,6 +93,7 @@ export function Report({
   generate,
   open,
   discard,
+  startedAt,
 }: ReportController) {
   const [showDigest, setShowDigest] = useState(false);
   /** Which row is asking "Delete this report?" — one at a time. */
@@ -176,7 +178,7 @@ export function Report({
           {!enabled ? (
             <NoKey model={feed?.config?.model} />
           ) : busy ? (
-            <Working />
+            <Working startedAt={startedAt} model={feed?.config?.model} />
           ) : !rep ? (
             <Empty />
           ) : rep.error ? (
@@ -346,19 +348,115 @@ function NoKey({ model }: { model?: string }) {
   );
 }
 
-function Working() {
+/**
+ * The generation screen.
+ *
+ * WHAT IT USED TO BE: "Reading the terminal…" over two paragraphs of caveats
+ * about free-tier pools. Read once, that is context; read on every generation,
+ * for two to three minutes, it is noise in the one place the eye has nothing
+ * else to do. The owner called it useless (2026-09-16), and it was.
+ *
+ * WHAT IT IS NOW: the helm, breathing on the same wash the header runs; a
+ * sweep that says "still working" without pretending to know how far; a clock
+ * that says how long it has actually been — the one figure that stops a slow
+ * model reading as a hung one; and a single line of what is happening, cycled
+ * off the elapsed time rather than off any real signal, because the request is
+ * one round trip and there is no real signal to show. The model name is the
+ * honest attribution and "usually 1–3 min" the honest expectation.
+ *
+ * THE SWEEP IS INDETERMINATE ON PURPOSE. A bar that fills to 90% and waits is
+ * the most common lie in software; this one only ever says "still going".
+ */
+const STAGES = [
+  "Reading the wire",
+  "Placing spot against the walls",
+  "Reading the session ranges",
+  "Reading the profile against prior value",
+  "Weighing the calendar",
+  "Forming the call",
+  "Writing the read",
+];
+
+function Working({ startedAt, model }: { startedAt: number | null; model?: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  const elapsed = Math.max(0, Math.floor((now - (startedAt ?? now)) / 1000));
+  const mm = Math.floor(elapsed / 60);
+  const ss = String(elapsed % 60).padStart(2, "0");
+  const stage = STAGES[Math.floor(elapsed / 8) % STAGES.length];
+
   return (
-    <div className="px-4 py-8 text-center">
-      <div className="fig text-[11.5px] text-ink-2">Reading the terminal…</div>
-      <p className="mt-1 text-[10.5px] leading-relaxed text-ink-4">
-        The board, the gamma structure, the session ranges, the curve, rotation, the calendar
-        and the wire go over in one request; a thesis, a call and a read per book come back.
-      </p>
-      <p className="mx-auto mt-2 max-w-[46ch] text-[10.5px] leading-relaxed text-ink-4">
-        On the free tier this can take a couple of minutes. The free pools are shared with
-        every other OpenRouter user, so the first model is often saturated and the request
-        falls through to the next one — the finished report names whichever actually answered.
-      </p>
+    <div
+      className="report-loader flex flex-col items-center px-4 py-14 text-center"
+      role="status"
+      aria-live="polite"
+    >
+      {/*
+        * The same lockup as the header — same trace, same mirror on a parent
+        * group (the glitch animates CSS transform, which would override a
+        * transform attribute on the path itself), same 5.6s wash. It is
+        * `hermes-mark` so it breathes and glitches on the header's timeline
+        * and stands down under prefers-reduced-motion with it.
+        */}
+      <svg width="88" height="88" viewBox="0 0 512 512" aria-hidden style={{ overflow: "visible" }}>
+        <defs>
+          <linearGradient
+            id="report-wash"
+            gradientUnits="userSpaceOnUse"
+            x1="0"
+            y1="0"
+            x2="1024"
+            y2="0"
+          >
+            <stop offset="0" stopColor="var(--icon-a)" />
+            <stop offset="0.25" stopColor="var(--title-sheen)" />
+            <stop offset="0.5" stopColor="var(--icon-b)" />
+            <stop offset="0.75" stopColor="var(--title-sheen)" />
+            <stop offset="1" stopColor="var(--icon-a)" />
+            <animateTransform
+              attributeName="gradientTransform"
+              type="translate"
+              from="0 0"
+              to="-1024 0"
+              dur="5.6s"
+              repeatCount="indefinite"
+            />
+          </linearGradient>
+        </defs>
+        <g transform="rotate(-10 256 256) translate(512 0) scale(-1 1)">
+          <path
+            className="hermes-mark"
+            fill="url(#report-wash)"
+            stroke="url(#report-wash)"
+            strokeWidth={6}
+            d={HERMES_MARK_D}
+          />
+        </g>
+      </svg>
+
+      <svg
+        className="mt-6 h-[2px] w-[220px]"
+        viewBox="0 0 220 2"
+        preserveAspectRatio="none"
+        aria-hidden
+      >
+        <rect width="220" height="2" fill="var(--ring)" />
+        <rect width="70" height="2" fill="url(#report-wash)">
+          <animate attributeName="x" from="-70" to="220" dur="1.8s" repeatCount="indefinite" />
+        </rect>
+      </svg>
+
+      <div className="fig mt-5 text-[22px] leading-none text-ink tabular-nums">
+        {mm}:{ss}
+      </div>
+      <div className="mt-2 text-[12px] text-ink-2">{stage}…</div>
+      <div className="fig mt-4 text-[10px] text-ink-4">
+        {model ? `${model} · ` : ""}usually 1–3 min on the free tier · the note names the
+        model that answered
+      </div>
     </div>
   );
 }

@@ -194,7 +194,10 @@ SESSIONS: dict[str, dict[str, str]] = {
     },
     "london": {
         "label": "London",
-        "hours": "03:00–08:00 ET (London cash 03:00–11:30 ET)",
+        "hours": (
+            "02:00–08:00 ET; the OPEN window is 02:00–05:00 "
+            "(European futures from 02:00, LSE cash 03:00–11:30 ET)"
+        ),
         "leads": "FTSE, DAX, Euro Stoxx; EUR/USD, GBP/USD, Bunds and Gilts",
         "handover": "Asia's session is the handover — London reprices what Asia did",
         "character": (
@@ -315,7 +318,7 @@ def resolve_session(clock: dict[str, Any], want: str = "auto") -> str:
 # used to never ask: at 16:30, Asia has NOT started.
 SESSION_CLOCK: dict[str, tuple[tuple[int, int], float]] = {
     "asia": ((18, 0), 9.0),    # 18:00 -> 03:00 ET
-    "london": ((3, 0), 5.0),   # 03:00 -> 08:00 ET
+    "london": ((2, 0), 6.0),   # 02:00 -> 08:00 ET, matching resolve_session
     "ny": ((9, 30), 6.5),      # 09:30 -> 16:00 ET
 }
 
@@ -380,9 +383,21 @@ def _vp_reads(asset: dict[str, Any], session: str) -> dict[str, Any]:
     if dev is not None and prev is not None and dev.get("open") is not None:
         pos = value_position(dev["open"], prev.get("vah"), prev.get("val"))
         if pos:
-            out["session_open"] = {
+            # NAMED FOR WHAT IT IS, AFTER IT WAS CITED AS SOMETHING ELSE. This
+            # was `session_open`, and a London brief read that as London's open
+            # and printed "The London session opened at 29,263.75" — a real
+            # number from this very field, which was the 18:00 ET Globex open,
+            # because the developing profile is still anchored at 18:00 all the
+            # way to 09:30. The key now names its anchor, and says in-band what
+            # it is not.
+            out["developing_profile_open"] = {
                 "price": dev["open"],
                 "anchored_et": dev.get("start_et"),
+                "this_is": (
+                    f"the opening print of the profile developing since "
+                    f"{dev.get('start_et')} ET — NOT the open of the session this "
+                    f"note is written for. For that, use session_ranges[].open."
+                ),
                 "vs_prev_rth_value": pos,
             }
 
@@ -683,7 +698,10 @@ def _ladder(
     # Asia. An Asia note's handover is the New York day, which the prior-RTH
     # rows below already carry, so it gets no range row of its own.
     sessions = {s.get("key"): s for s in rng.get("sessions") or [] if s.get("ok")}
-    handover = {"ny": (("asia", "london", "preny"), "ON"), "london": (("asia",), "Asia")}
+    handover = {
+        "ny": (("asia", "london", "euro_mid", "preny"), "ON"),
+        "london": (("asia",), "Asia"),
+    }
     if session in handover:
         keys, prefix = handover[session]
         picked = [sessions[k] for k in keys if k in sessions]
@@ -1023,8 +1041,10 @@ def build_digest(
     quotes = snap.get("quotes") or []
     clock = snap.get("clock") or {}
     # Off the SNAPSHOT's clock, not the wall clock, so the digest and the note
-    # describe the same instant even if the snapshot is a little behind.
-    _prog = session_progress(session, _now_et(snap))
+    # describe the same instant even if the snapshot is a little behind. One
+    # binding, reused by the gamma age below for the same reason.
+    now = _now_et(snap)
+    _prog = session_progress(session, now)
     rates = snap.get("rates") or {}
     sectors = snap.get("sectors") or []
     gex = (snap.get("gex") or {}).get("assets") or {}
@@ -1076,6 +1096,18 @@ def build_digest(
                 if v.get("regime") == "POS"
                 else "dealer hedging amplifies moves; expect trend and range extension"
             ),
+            # NO SNAPSHOT AGE HERE, AND THE REASON IS WORTH KEEPING. It was
+            # added to let the model see how stale the positioning is overnight,
+            # and measured on GEXYGEN's GENERATED_UNIX — which is when GEXYGEN
+            # last COMPUTED the map, not when the open interest behind it last
+            # moved. GEXYGEN recomputes continuously while it runs, so the field
+            # read 0 at every hour, and `gex.py` fetches with ttl 0 and
+            # stale_ok=False, so a dead GEXYGEN yields no levels rather than old
+            # ones. The number could therefore only ever say "fresh" — which at
+            # 03:00 ET is precisely the wrong impression. The staleness that
+            # matters is unconditional outside RTH and is stated in the prompt
+            # instead: OI clears once a day, so out of hours this is the US
+            # close's positioning.
             "levels": [
                 {
                     "label": lv["label"],
@@ -1106,6 +1138,13 @@ def build_digest(
             "sessions": [
                 {
                     "session": r["label"],
+                    # THE OPEN, WHICH THIS BLOCK USED TO WITHHOLD. Asked where
+                    # price sat at the session's start and given only a high and
+                    # a low, a model goes looking elsewhere in the digest and
+                    # finds a number that is an open of something else. Giving
+                    # it the right one is the fix; `developing_profile_open`
+                    # carrying a disclaimer is only the guard rail.
+                    "open": r.get("open"),
                     "high": r["high"],
                     "low": r["low"],
                     "range": round(r["range"], 1) if r.get("range") is not None else None,
@@ -1113,6 +1152,15 @@ def build_digest(
                     # 0 at that session's low, 1 at its high, >1 means the
                     # current price has taken the session's high out.
                     "where_price_sits": round(r["pos"], 2) if r.get("pos") is not None else None,
+                    # WHEN, AND WHETHER IT IS FINISHED. "Most recent" is
+                    # yesterday's for any window that has not come round again,
+                    # so at 01:00 ET the London and New York rows are the
+                    # previous day's. Without these two the model reads every
+                    # row as today's and writes about a session that has not
+                    # happened yet.
+                    "date": r.get("date"),
+                    "status": r.get("status"),
+                    "window_et": f"{r.get('start_et')}-{r.get('end_et')}",
                 }
                 for r in (v.get("sessions") or [])
                 if r.get("ok")
@@ -1355,6 +1403,22 @@ SCHEMA: dict[str, Any] = _obj({
         "rest_of_day": {**_STR, "description": "Short label, e.g. 'Neutral to leaning bearish'."},
         "rest_of_day_bias": _BIAS,
         "wrong_if": {**_STR, "description": "Under 60 characters, using ladder levels."},
+        # THE JUSTIFICATION, IN LAYERS. Two to four bullets, each naming its
+        # layer, so a call cannot be asserted without saying what it rests on:
+        # the macro driver, whether structure confirms or conflicts, and what
+        # tipped it. The owner asked for the bias to explain itself
+        # (2026-09-16); a bias with a conviction score and no reasoning is a
+        # number that cannot be argued with, which is not a virtue.
+        "why": _arr(
+            {
+                **_STR,
+                "description": (
+                    "One reason, prefixed with its layer: "
+                    "Macro:, Positioning:, Structure:, Session:."
+                ),
+            },
+            2, 4,
+        ),
     }), 1, 3),
     "snapshot_watch": _arr(_obj({"key": _STR, "note": _STR}), 0, 5),
     "gamma_read": _STR,
@@ -1458,10 +1522,29 @@ positioning rather than information — after-hours US earnings, which print at
 16:00-16:30 ET before Globex has even reopened, routinely move NQ overnight more
 than anything on the regional tape.
 
-THAT THINNESS CHANGES THE READING, structurally rather than narratively: levels
-hold more easily and a break through one is worth less. Weight the gamma walls
-and the developing profile MORE and the macro story LESS, and say explicitly
+THAT THINNESS CHANGES THE READING, structurally rather than narratively. Weight
+the SESSION'S OWN EVIDENCE up and the macro story down: the developing profile
+and the range so far are built from the tape actually trading, they update with
+every bar, and in a thin book acceptance means more, not less. Say explicitly
 when a move looks like position-driven drift rather than a repricing.
+
+DEALER GAMMA IS THE EXCEPTION, AND IT SPLITS IN TWO. Overnight a wall is a
+LEVEL, NOT A FORCE. The pin works through dealers hedging in a deep book, and
+that flow is largely absent out of hours — desks that can hedge overnight mostly
+wait for liquidity rather than work size into Globex. So:
+  * A POSITIVE-GAMMA PIN IS WEAKER HERE than the same setup at 10:30 ET. Cite
+    the walls as reference geometry and as the frame New York will open into;
+    do not claim price should pin between them tonight on hedging that is not
+    happening.
+  * THE FLIP CUTS THE OTHER WAY. Negative gamma in a thin book is MORE
+    dangerous, not less: whatever hedging flow does arrive moves price further
+    than it would in depth, which is how overnight cascades happen at all. Spot
+    below the flip out of hours deserves more weight, not less.
+AND THE MAP ITSELF IS THE US CLOSE'S. Open interest clears once a day and the
+options barely trade out of hours, so this is where dealers WERE when New York
+shut, not where they are now. Usually still fair — positions do not move much
+when nothing trades — but it is one more reason to read the walls as geometry
+overnight rather than as a live constraint.
 """
 
 
@@ -1643,6 +1726,20 @@ sits beside them, point at rows by `key` or `id` where a field asks for one, \
 and take any level you name from `brief_tables.ladders`.
 
 {_live_framing(session, prog or session_progress(session, datetime.now(ET)))}
+HOW THE BIAS IS FORMED, AND IN WHAT ORDER. Macro sets the DIRECTION: the data \
+that printed, what is priced for the Fed, the policy path, the dollar and the \
+curve are why the market wants to go somewhere, and the call is anchored there \
+whenever any of it is live today. Structure sets the PATH: where the session \
+opened against prior value, the profile's shape and second node, the session \
+ranges and the gamma map decide whether the macro lean is being ACCEPTED or \
+REJECTED by the tape, and they supply every level the call names. Read them \
+together, never one without the other — a bearish print with price accepted \
+above prior value and above the flip is a CONFLICT, and a conflict lowers \
+conviction rather than picking a side. On a day with no print and no speaker, \
+say so and let structure lead: macro that is not moving today does not anchor \
+a call by reputation. Gamma's weight follows the session — decisive in New \
+York where the hedging flow is real, a reference elsewhere.
+
 Field by field:
   thesis          One or two plain sentences: the single idea that explains \
 today across the books, and the one figure to watch. It is the page's headline.
@@ -1651,7 +1748,13 @@ the start of the session and `conviction` its strength, 1-5. `rest_of_day` is \
 a short label for how the session evolves after the open ("Neutral to leaning \
 bearish", "Leaning bearish, conditional") and `rest_of_day_bias` its \
 direction. `wrong_if` is the price condition that kills the call, under 60 \
-characters.
+characters. `why` is two to four bullets that justify the bias, EACH PREFIXED \
+WITH ITS LAYER — "Macro:", "Positioning:", "Structure:", "Session:" — in that \
+order where they apply: the macro driver with its figure; the positioning read \
+(the gamma regime, spot against the flip); the structure read (opened above or \
+below prior value, the profile's shape, which range level is holding); and what \
+the session does to the weighting. Name the conflict if there is one. This is \
+the part the reader argues with, so it has to be concrete enough to argue with.
   snapshot_watch  Up to five `brief_tables.snapshot` keys that matter most \
 today, each with a few words on why.
   gamma_read      One or two sentences: what the regime, the flip and the \
@@ -1829,6 +1932,7 @@ def sanitize_brief(obj: Any, facts: dict[str, Any]) -> dict[str, Any] | None:
             # so an unreadable direction falls back to the open call's.
             "rest_of_day_bias": norm_bias(c.get("rest_of_day_bias")) or bias,
             "wrong_if": _text(c.get("wrong_if")),
+            "why": _texts(c.get("why"), 4),
         }
 
     reads: dict[str, dict[str, Any]] = {}

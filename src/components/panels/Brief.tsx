@@ -107,10 +107,10 @@ export function Brief({ rep }: { rep: Report }) {
   const live = rep.session_underway === true;
 
   return (
-    <article className="mx-auto max-w-[1360px] px-5 pt-4 pb-6">
+    <article className="w-full px-5 pt-4 pb-6">
       <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <span className="text-[12px] font-semibold text-ink">
-          {rep.session_label} session brief
+        <span className="text-[13.5px] font-semibold text-ink">
+          {rep.session_label} Session Brief
         </span>
         <span className="fig text-[11px] text-ink-3">{f.as_of}</span>
       </header>
@@ -215,16 +215,39 @@ function Calls({ calls, live }: { calls: BriefCall[]; live?: boolean }) {
             className="border-t-[3px] px-3.5 pt-3 pb-3.5"
             style={{ borderColor: ink, background: tint(ink, 10) }}
           >
-            <div className="text-[12px] font-semibold text-ink-3">{BOOK_NAME[c.book]}</div>
-            <div className="mt-0.5 font-serif text-[26px] leading-8" style={{ color: ink }}>
+            <div className="text-[13.5px] font-semibold text-ink-3">{BOOK_NAME[c.book]}</div>
+            <div className="mt-0.5 font-serif text-[29px] leading-9" style={{ color: ink }}>
               {biasLabel(c.open_bias)}
             </div>
-            <div className="mt-0.5 mb-3 flex flex-wrap items-center gap-2 text-[11.5px] text-ink-3">
+            <div className="mt-0.5 mb-3 flex flex-wrap items-center gap-2 text-[12.5px] text-ink-3">
               <span>
                 {convictionWord(c.conviction)} conviction {live ? "from here" : "at the open"}
               </span>
               <Pips n={c.conviction} hue={ink} />
             </div>
+            {/*
+              * THE REASONING SITS ON THE CARD, NOT IN THE READ BELOW IT. A bias
+              * and a conviction score with no "because" is a number that cannot
+              * be argued with; the owner asked for the call to explain itself.
+              * Each line names its layer, so a macro reason and a structure
+              * reason cannot be blurred into one sentence — and a conflict
+              * between them is visible as two lines that disagree.
+              */}
+            {c.why && c.why.length > 0 && (
+              <>
+                <Label>Why</Label>
+                <ul className="mb-3 space-y-1">
+                  {c.why.map((w, i) => (
+                    <li key={i} className="flex gap-1.5 text-[12.5px] leading-snug text-ink">
+                      <span aria-hidden className="text-ink-3">
+                        ·
+                      </span>
+                      <span>{w}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
             <Label>{live ? "Rest of session" : "Rest of day"}</Label>
             <div className="mb-2.5 text-[13.5px] leading-snug text-ink">
               {c.rest_of_day || biasLabel(c.rest_of_day_bias)}
@@ -253,7 +276,7 @@ function Pips({ n, hue }: { n: number; hue: string }) {
       {[1, 2, 3, 4, 5].map((i) => (
         <span
           key={i}
-          className="h-[6px] w-[6px] rounded-full"
+          className="h-[8px] w-[8px] rounded-full"
           style={{ background: i <= n ? hue : "var(--ring-2)" }}
         />
       ))}
@@ -737,7 +760,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function Label({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn("mb-1 text-[11px] text-ink-3", className)}>{children}</div>;
+  return <div className={cn("mb-1 text-[12px] text-ink-3", className)}>{children}</div>;
 }
 
 function P({

@@ -9,16 +9,35 @@ London as well as New York, so the question is not only "what happened
 overnight" — it is "what happened in the session I am about to trade, and in
 the one that just handed over to it".
 
-FOUR WINDOWS, IN ET, AND THEY DO NOT OVERLAP.
+FIVE WINDOWS, IN ET, AND THEY DO NOT OVERLAP.
 
-  asia     18:00 → 03:00   Globex reopens; Tokyo and Hong Kong lead
-  london   03:00 → 08:00   European cash opens at 03:00 ET
-  preny    08:00 → 09:30   the overlap and the 08:30 data window
-  ny       09:30 → 16:00   US cash
+  asia      18:00 → 02:00   Globex reopens; Tokyo and Hong Kong lead
+  london    02:00 → 05:00   the London OPEN window, where Europe does its damage
+  euro_mid  05:00 → 08:00   European midday; US premarket starts building
+  preny     08:00 → 09:30   the overlap and the 08:30 data window
+  ny        09:30 → 16:00   US cash
 
 The boundaries are the handovers a trader actually uses, not the exchanges'
 own hours — London cash runs to 11:30 ET but by 09:30 the flow is American, and
 a "London range" that included the US open would describe neither.
+
+LONDON IS THE OPEN WINDOW, 02:00-05:00, AND IT STARTS BEFORE THE CASH BELL.
+The LSE opens at 08:00 London, which is 03:00 ET all year (the two
+hemispheres shift together for this pair).
+But European flow is already in by then: Eurex futures open at 08:00 CET —
+02:00 ET — and the London desks are at their screens an hour before the cash
+open. The hour from 02:00 is European-driven, and counting it as Asia described
+it as thin Globex drift when it is nothing of the kind. `resolve_session` in
+report.py has always used 02:00 for the same reason; the windows here now agree
+with it instead of contradicting it by an hour.
+
+IT ENDS AT 05:00 BECAUSE THAT IS WHERE THE DAMAGE IS DONE. "London took out the
+Asia high" is a claim about the OPEN move; run the window to 08:00 and it
+absorbs three hours of midday drift and stops meaning that. So the leftovers get
+their own window rather than diluting this one — euro_mid exists to be somewhere
+else for them to go. Note the report still writes a LONDON SESSION note across
+roughly 02:00-07:30 (resolve_session); this row is labelled "London open" so two
+different spans are never both called London.
 
 EVERYTHING IN ET, converted from the bar's own epoch. The instruments settle on
 CME's clock, which is New York's; deriving from local time would put every
@@ -39,8 +58,9 @@ ET = ZoneInfo("America/New_York")
 # key, label, start hour (ET), end hour (ET). A window whose start is greater
 # than its end wraps midnight.
 WINDOWS: list[tuple[str, str, float, float]] = [
-    ("asia", "Asia", 18.0, 3.0),
-    ("london", "London", 3.0, 8.0),
+    ("asia", "Asia", 18.0, 2.0),
+    ("london", "London open", 2.0, 5.0),
+    ("euro_mid", "Europe midday", 5.0, 8.0),
     ("preny", "Pre-NY", 8.0, 9.5),
     ("ny", "New York", 9.5, 16.0),
 ]
@@ -61,14 +81,23 @@ def _in_window(hour: float, start: float, end: float) -> bool:
 
 def segment(
     stamps: list[int], highs: list[float | None], lows: list[float | None],
-    closes: list[float | None], last: float | None,
+    closes: list[float | None], last: float | None, now_et: datetime,
 ) -> list[dict[str, Any]]:
     """Bars → one row per session window. Pure, so it is the testable part.
 
     Only the MOST RECENT occurrence of each window is kept. A two-day pull
     spans two Asia sessions on a Tuesday, and merging them into one high and low
     would describe a range that never traded as a single session.
+
+    EACH ROW SAYS WHEN IT WAS AND WHETHER IT IS FINISHED, which it did not used
+    to. "Most recent" means yesterday's for every window that has not come round
+    again: at 01:00 ET the London, Pre-NY and New York rows are all the previous
+    day's, and with only `%H:%M` on them nothing said so. A model handed a row
+    labelled "London 03:00-07:45" at one in the morning reads it as today's and
+    writes about a session that has not happened yet. `date` and `status` are
+    what make a stale row admit to being stale.
     """
+    now_h = now_et.hour + now_et.minute / 60.0
     out: list[dict[str, Any]] = []
     for key, label, start, end in WINDOWS:
         # Walk backwards and stop at the first gap, so what is collected is the
@@ -121,6 +150,12 @@ def segment(
             "bars": len(picked),
             "start_et": datetime.fromtimestamp(picked[0][0], ET).strftime("%H:%M"),
             "end_et": datetime.fromtimestamp(picked[-1][0], ET).strftime("%H:%M"),
+            # The calendar day the window STARTED on — not the day it ended,
+            # because Asia begins the evening before the session it feeds.
+            "date": datetime.fromtimestamp(picked[0][0], ET).strftime("%a %d"),
+            # "live" while the clock is still inside this window, so a range
+            # that is still being built is never read as a finished one.
+            "status": "live" if _in_window(now_h, start, end) else "complete",
         })
     return out
 
@@ -128,6 +163,7 @@ def segment(
 def collect() -> tuple[dict[str, Any], SourceStatus]:
     """Session ranges for the three books, in one request."""
     st = SourceStatus("Session ranges")
+    now_et = datetime.now(ET)
     got, err = _spark([sym for _, sym in ASSETS], "2d", "15m", ttl=60.0)
     if err:
         st.error = err
@@ -156,6 +192,7 @@ def collect() -> tuple[dict[str, Any], SourceStatus]:
                 list((q.get("low") or [None] * n)[:n]),
                 list(closes[:n]),
                 last,
+                now_et,
             ),
         }
 

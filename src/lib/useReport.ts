@@ -35,11 +35,19 @@ export interface ReportController {
   open: (id: string) => void;
   /** Delete one stored report. Permanent — the panel asks first. */
   discard: (id: string) => void;
+  /**
+   * When the running generation was asked for, as an epoch ms. Owned here and
+   * not in the panel's loader for the same reason `busy` is: the panel
+   * unmounts on a tab switch, and a clock that restarted from zero on the way
+   * back would be lying about how long you have waited.
+   */
+  startedAt: number | null;
 }
 
 export function useReport(initial: ReportFeed | null): ReportController {
   const [feed, setFeed] = useState<ReportFeed | null>(initial);
   const [busy, setBusy] = useState(false);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
   const [viewing, setViewing] = useState<string | null>(null);
   const [pick, setPick] = usePersisted<ReportSession | "auto">(
     "report.session",
@@ -68,6 +76,7 @@ export function useReport(initial: ReportFeed | null): ReportController {
 
   const generate = useCallback(() => {
     setBusy(true);
+    setStartedAt(Date.now());
     setViewing(null);
     const mine = ++seq.current;
     void (async () => {
@@ -81,7 +90,10 @@ export function useReport(initial: ReportFeed | null): ReportController {
       } catch {
         /* same */
       } finally {
-        if (mine === seq.current) setBusy(false);
+        if (mine === seq.current) {
+          setBusy(false);
+          setStartedAt(null);
+        }
       }
     })();
   }, [pick, book]);
@@ -128,5 +140,5 @@ export function useReport(initial: ReportFeed | null): ReportController {
     })();
   }, []);
 
-  return { pick, setPick, book, setBook, feed, busy, viewing, generate, open, discard };
+  return { pick, setPick, book, setBook, feed, busy, viewing, generate, open, discard, startedAt };
 }

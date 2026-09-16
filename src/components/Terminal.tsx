@@ -239,18 +239,20 @@ export function Terminal({
              * session's range is the handover read this terminal exists for,
              * and the seven gamma levels are the prices you place orders at.
              *
-             * The session clock earns third rather than first because the
-             * header already carries the ET time and the phase ("NY midday"),
-             * so what this panel uniquely adds is the city table and the NEXT
-             * marker — reference you consult, not a figure you act on. It is
-             * still comfortably above the fold at this position.
+             * The vol term structure is fourth because it is the regime read
+             * that frames the three above it — contango or backwardation says
+             * whether a wall is likely to hold — and it reprices every twenty
+             * seconds. Rates follows DESPITE being an explicit requirement,
+             * because it is the only panel here whose data is daily: the curve
+             * stamps a date, not a time, and cannot move during a session.
              *
-             * Rates sits last DESPITE being an explicit requirement, because it
-             * is the only panel here whose data is daily: the curve stamps a
-             * date, not a time, and it cannot move during a session. The vol
-             * term structure above it reprices every twenty seconds. Ordering
-             * by how often something can change you is the only ordering that
-             * survives contact with a fold.
+             * The session clock is LAST, moved down from third (owner,
+             * 2026-09-16: most important at the top, descending). The header
+             * already carries the ET time and the phase ("NY midday"); what
+             * this panel uniquely adds is the city table and the NEXT marker —
+             * reference you consult, not a figure you act on. Ordering by how
+             * often something can change you is the only ordering that
+             * survives contact with a fold, and a clock never changes you.
              */}
             <SessionRanges
               assets={data.ranges?.assets ?? {}}
@@ -269,7 +271,6 @@ export function Terminal({
               ageMin={ages.gex}
               error={st.gex?.ok === false ? st.gex.error : null}
             />
-            {clock && <Sessions clock={clock} />}
             <Volatility vol={data.volterm} ageMin={ages.quotes} />
             <Rates
               rates={data.rates}
@@ -277,6 +278,7 @@ export function Terminal({
               ageMin={ages.rates}
               error={st.rates?.ok === false ? st.rates.error : null}
             />
+            {clock && <Sessions clock={clock} />}
           </div>
 
           {/* ---- middle: the wire --------------------------------------- */}
@@ -298,32 +300,48 @@ export function Terminal({
               ageMin={ages.quotes}
               error={st.quotes?.ok === false ? st.quotes.error : null}
             />
+            <Calendar
+              rows={data.calendar ?? []}
+              ageMin={ages.calendar}
+              error={st.calendar?.ok === false ? st.calendar.error : null}
+            />
             <Movers
               indices={data.constituents?.indices ?? {}}
               ageMin={ages.constituents}
               error={st.constituents?.ok === false ? st.constituents.error : null}
             />
             {/*
-             * LIVE STATE FIRST, THEN WHAT IS SCHEDULED. This column used to run
-             * prices, movers, calendar, fed, earnings, rotation, macro — which
-             * interleaves two different kinds of thing and strands two live
-             * panels BELOW three forward-looking ones. Sector rotation was
-             * sixth of seven, behind a 221-row calendar, so a regime read the
-             * owner asked for by name was the least reachable thing on screen.
+             * THE BOOK, THEN THE MACRO, THEN WHAT THE MACRO DID TO THE BOOK,
+             * then the diaries. Reordered 2026-09-16 on the owner's principle
+             * that importance descends down the column, and their view that
+             * macro is what moves these books.
              *
-             * The split is now clean: what the market is doing right now
-             * (prices, the names driving the index, which sectors are bid) sits
-             * above the fold, and what is merely on the diary sits below it.
+             * The CALENDAR is second because it is where macro lives on this
+             * screen: the print that just landed and its surprise are the most
+             * important fact on a data day, and on a quiet day the calendar is
+             * what says it is quiet — which is itself the frame. It used to sit
+             * fourth, behind Movers and Rotation, on the grounds that a
+             * 221-row list buried everything below it; it is now capped at
+             * 340px with its own scroll, so that objection no longer holds.
+             * Movers and Rotation follow as the CONSEQUENCES of the macro —
+             * which names and which sectors carried the move — not its causes.
+             *
+             * The MACRO BOARD moved up from last, where it sat below three
+             * diaries in a column whose own rule was "live state above what is
+             * scheduled": it is live prices. It stays below the panels above it
+             * only because the header strip already carries its headline rows
+             * (VIX, US10Y, DXY, WTI). Fed and Earnings are diaries, and go last.
              */}
             <Rotation
               rows={data.sectors ?? []}
               ageMin={ages.sectors}
               error={st.sectors?.ok === false ? st.sectors.error : null}
             />
-            <Calendar
-              rows={data.calendar ?? []}
-              ageMin={ages.calendar}
-              error={st.calendar?.ok === false ? st.calendar.error : null}
+            <Board
+              title="Macro board"
+              quotes={data.quotes ?? []}
+              groups={["vol", "energy", "rates", "fx", "metals", "global", "crypto"]}
+              ageMin={ages.quotes}
             />
             <Fed
               rows={data.fed ?? []}
@@ -349,12 +367,6 @@ export function Terminal({
               today={data.expiry?.today ?? ""}
               ageMin={ages.earnings}
               error={st.earnings?.ok === false ? st.earnings.error : null}
-            />
-            <Board
-              title="Macro board"
-              quotes={data.quotes ?? []}
-              groups={["vol", "energy", "rates", "fx", "metals", "global", "crypto"]}
-              ageMin={ages.quotes}
             />
           </div>
         </main>
